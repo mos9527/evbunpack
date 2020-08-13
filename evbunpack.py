@@ -116,4 +116,6 @@ if __name__ == "__main__":
             print(f'{jstr("FOLDER")} {header}')
             for i in range(0,node['objects_count']):
                 traverse(next(nodes),prefix=path,level=level + 1)
+    print(f'Unpacking {file} -> {output}')
+    print('─' * 50)
     traverse(next(nodes))
