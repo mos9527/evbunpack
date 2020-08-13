@@ -3,7 +3,7 @@ from __const__ import *
 import struct,sys,io,os,math
 
 def SerialUnpack(packHeader, buffer, *args):
-    '''Utility function - used to unpack files'''
+    '''Utility function - used to unpack array of bytes'''
     if not isinstance(packHeader, list):
         packHeader = [packHeader]
     # ignore non-tuple items
