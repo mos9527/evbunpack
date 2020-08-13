@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 from __const__ import *
-import struct
-import io,os,math
+import struct,sys,io,os,math
 
 def SerialUnpack(packHeader, buffer, *args):
     '''Utility function - used to unpack files'''
@@ -88,16 +87,24 @@ def GenerateEVBNodes(mainNode):
         else:
             return  # stop when no more items are available
 
+def GetEVBContainerStream(path):
+    return open(file,'rb')
+
 if __name__ == "__main__":
     parser = ArgumentParser(description='Enigma Vitural Box external package unpacker')
     parser.add_argument('file', help='EVB external package (container)')
     parser.add_argument('output', help='The desirerd output path')
     args = parser.parse_args()
 
-    file, output = args.file, args.output
+    file, output       = args.file, args.output
+    evbHeader,mainNode = None,None 
     fp = open(file, 'rb')
-    evbHeader,mainNode = ReadEVBMeta(fp)
-
+    try:
+        evbHeader,mainNode = ReadEVBMeta(fp)
+    except AssertionError:
+        print( 'ERROR : File magic mismatch')
+        print(r'Make sure that your file header begins with hexidecimal values of 0x45 0x56 0x42 0x00 (EVB\x00)')
+        sys.exit(1)
     nodes = GenerateEVBNodes(mainNode)
     # defining some useful tools
     jstr = lambda s:str(s).center(8)[:8]
