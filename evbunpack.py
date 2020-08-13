@@ -87,9 +87,6 @@ def GenerateEVBNodes(mainNode):
         else:
             return  # stop when no more items are available
 
-def GetEVBContainerStream(path):
-    return open(file,'rb')
-
 if __name__ == "__main__":
     parser = ArgumentParser(description='Enigma Vitural Box external package unpacker')
     parser.add_argument('file', help='EVB external package (container)')
