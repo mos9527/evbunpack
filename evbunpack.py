@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from __const__ import *
 import struct,sys,io,os,math
-
+blocksize = 1024 ** 3 # 1 MB per block
 def SerialUnpack(packHeader, buffer, *args):
     '''Utility function - used to unpack array of bytes'''
     if not isinstance(packHeader, list):
@@ -104,15 +104,23 @@ if __name__ == "__main__":
         sys.exit(1)
     nodes = GenerateEVBNodes(mainNode)
     # defining some useful tools
-    jstr = lambda s:str(s).center(8)[:8]
-    hrs  = lambda s:f"{int(s/(1024**int(math.log2(s) // 10)))} {['B', 'kB', 'MB', 'GB', 'TB'][int(math.log2(s) // 10)]}" # one-line for byte hrs?hell yea
+    jstr = lambda s:str(s).center(16)[:16]
+    hrs  = lambda s:f"{int(s/(1024**int(math.log2(s) // 10)))} {['B', 'kB', 'MB', 'GB', 'TB'][int(math.log2(s) // 10)]}" if s else "0 B" # one-line for byte hrs?hell yea
     # start traversing
     def traverse(node,prefix=output,level=0):
         path = os.path.join(prefix,node['name'])
         header = f"│{'─' * level} {path}"
         if node['type'] == NODE_TYPE_FILE:
             size = node['stored_size']
-            open(path,'wb').write(fp.read(size))
+            # writing file
+            with open(path,'wb') as file:
+                b = 0
+                for b in range(0,size,blocksize):
+                    precentage = int(b * 100 // size)
+                    print(jstr(f'{precentage} % of {hrs(size)}'),header,end='\r')           
+                    block = fp.read(blocksize)
+                    file.write(block)                             
+                file.write(fp.read(size - b)) # write whatever is left
             print(f'{jstr(hrs(size))} {header}')
         else:
             # dealing with folders
