@@ -6,7 +6,7 @@ EVB_PACK_HEADER = [
 
 EVB_NODE_MAIN = [
     ('I', 'size'),
-    ('8s', ''),
+    ('8s', ''), # don't know what this is for
     ('I', 'objects_count'),
     16
 ]
@@ -17,7 +17,7 @@ EVB_NODE_NAMED = [
     ('%ds', 'name'),
     ('3s', ''),
     ('B', 'type'),
-    4  # then length of the pad and the `type`
+    4  # the length of the `pad` & `type`
 ]
 
 # there's a certain amount of pad bytes that's decided by `EVB_NODE_NAMED['type']`
@@ -31,12 +31,16 @@ EVB_NODE_OPTIONAL_FOLDER = [
 EVB_NODE_OPTIONAL_FILE = [
     ('2s', ''),
     ('I', 'original_size'),
-    ('43s', ''),
+    ('4s',''),
+    ('Q','time1'),
+    ('Q','time2'),
+    ('Q','time3'),
+    ('15s','reserved'),
     ('I', 'stored_size'),
     53
 ]
 # ...where when `type` is 2 (file),the total bytes of the node is (53) with
-#  additional 15 bytes of pad (unless the file is the last one on the list)
+#  additional 13 bytes of pad (unless the file is the last one on the list)
 
 NODE_TYPE_FILE   = 2
 NODE_TYPE_FOLDER = 3

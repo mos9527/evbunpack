@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 from __const__ import *
-import struct,sys,io,os,math
-blocksize = 1024 ** 3 # 1 MB per block
+import struct,sys,io,os,math,datetime
+blocksize = 8 * 1024 ** 2 # 8 MB per block
 def SerialUnpack(packHeader, buffer, *args):
     '''Utility function - used to unpack array of bytes'''
     if not isinstance(packHeader, list):
@@ -60,7 +60,6 @@ def GenerateEVBNodes(mainNode):
                 return None
             buf = fPre + fnBuf + fp.read(EVB_NODE_NAMED[-1])
             pak = SerialUnpack(EVB_NODE_NAMED, buf, len(fnBuf))
-            pak['name'] = pak['name'].decode()  # decode the filename
             return pak
 
         def readOptionalNode(nNode):
@@ -78,12 +77,26 @@ def GenerateEVBNodes(mainNode):
                     fp.read(12)
             pak = SerialUnpack(nodeStruct, buf)
             return pak
-
+        def decodeNode(nNode,oNode):
+            if nNode and oNode:
+                node = {**nNode, **oNode}
+                keys = {
+                    'name':lambda v:v.decode(),
+                    'created_time':lambda v:datetime.datetime.fromtimestamp(v),
+                    'reserved':lambda v:' '.join([hex(n)[2:].upper().rjust(2,'0') for n in v])
+                }
+                for k in keys:
+                    if k in node.keys():
+                        node[k] = keys[k](node[k])
+                return node
+            else:
+                return None
         nNode = readNamedNode()
         oNode = readOptionalNode(nNode)
+        node = decodeNode(nNode,oNode)
         # read all nodes
-        if nNode and oNode:
-            yield {**nNode, **oNode}
+        if node:
+            yield node
         else:
             return  # stop when no more items are available
 
@@ -115,7 +128,7 @@ if __name__ == "__main__":
             # writing file
             with open(path,'wb') as file:
                 b = 0
-                for b in range(0,size,blocksize):
+                for b in range(0,size,blocksize)[1:]:
                     precentage = int(b * 100 // size)
                     print(jstr(f'{precentage} % of {hrs(size)}'),header,end='\r')           
                     block = fp.read(blocksize)
