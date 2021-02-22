@@ -18,6 +18,20 @@ def ReadEVBMeta(fp : io.BufferedIOBase):
 
        Returns the read `(EVB_PACK_HEADER,EVB_NODE_MAIN)` object
     '''
+    def find_magic(magic=b'EVB\x00'):
+        buffer=bytearray() # circular buffer
+        index=0
+        while p:=fp.read(1):
+            index+=1
+            buffer.extend(p)
+            if len(buffer) > 5:buffer.pop(0)
+            if magic in buffer:
+                fp.seek(-len(magic),1)
+                index-=len(magic)
+                print('Located magic (1st occurence) at',index)
+                return True
+        return False
+    assert find_magic()
     evbHeader = SerialUnpack(EVB_PACK_HEADER, fp.read(64))
     assert evbHeader['signature'] == b'EVB\x00'
     # perform the magic check
@@ -45,16 +59,12 @@ def GenerateEVBNodes(mainNode):
         def readNamedNode():
             fPre = fp.read(3) # pre - assigns object count
             def readFileName():
-                filenameBuf = b''
-                while fp.tell() + 2 < bound:  # read until we are at the end of the header
-                    p = struct.unpack('2c', fp.read(2))
-                    if p[1] == b'\x00':  # eof
-                        # return to the position where we last read
-                        fp.seek(-2, 1)
-                        return filenameBuf
-                    else:
-                        filenameBuf += p[1]
-                return None
+                filenameBuf = bytearray()                
+                while (p:=fp.read(2))[1]!=0:  # read until we are at the end of the header                    
+                    filenameBuf.extend(p)
+                filenameBuf.extend(p[:1])
+                fp.seek(-2,1)                    
+                return filenameBuf[1:]
             fnBuf = readFileName()
             if not fnBuf:
                 return None
@@ -78,10 +88,13 @@ def GenerateEVBNodes(mainNode):
             pak = SerialUnpack(nodeStruct, buf)
             return pak
         def decodeNode(nNode,oNode):
+            def decode_name(v):                     
+                print(v.hex(' '))                
+                return v.decode('utf-16')
             if nNode and oNode:
                 node = {**nNode, **oNode}
                 keys = {
-                    'name':lambda v:v.decode(),
+                    'name':decode_name,
                     'created_time':lambda v:datetime.datetime.fromtimestamp(v),
                     'reserved':lambda v:' '.join([hex(n)[2:].upper().rjust(2,'0') for n in v])
                 }
@@ -118,7 +131,7 @@ if __name__ == "__main__":
     nodes = GenerateEVBNodes(mainNode)
     # defining some useful tools
     jstr = lambda s:str(s).center(16)[:16]
-    hrs  = lambda s:f"{int(s/(1024**int(math.log2(s) // 10)))} {['B', 'kB', 'MB', 'GB', 'TB'][int(math.log2(s) // 10)]}" if s else "0 B" # one-line for byte hrs?hell yea
+    hrs  = lambda s:f"{int(s/(1024**int(math.log2(s) // 10)))} {['B', 'kB', 'MB', 'GB', 'TB'][int(math.log2(s) // 10)]}" if s else "0 B"
     # start traversing
     def traverse(node,prefix=output,level=0):
         path = os.path.join(prefix,node['name'])
