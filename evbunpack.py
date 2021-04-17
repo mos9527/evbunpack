@@ -88,8 +88,7 @@ def GenerateEVBNodes(mainNode):
             pak = SerialUnpack(nodeStruct, buf)
             return pak
         def decodeNode(nNode,oNode):
-            def decode_name(v):                     
-                print(v.hex(' '))                
+            def decode_name(v):                                                
                 return v.decode('utf-16')
             if nNode and oNode:
                 node = {**nNode, **oNode}
