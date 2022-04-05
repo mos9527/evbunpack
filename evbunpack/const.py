@@ -6,7 +6,7 @@ EVB_PACK_HEADER = [
 
 EVB_NODE_MAIN = [
     ('I', 'size'),
-    ('8s', ''), # don't know what this is for
+    ('6s', ''), # don't know what this is for
     ('I', 'objects_count'),
     16
 ]

@@ -1,9 +1,9 @@
+# by greats3an 2022
+import struct,sys,io,os
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
-import struct,sys,io,os,math
-from const import *
-from aplib import decompress
-blocksize = 8 * 1024 ** 2 # 8MB
+from evbunpack.const import *
+from evbunpack.aplib import decompress
 
 def unpack(structure, buffer, *args):
     '''Unpack buffer by structure given'''    
@@ -24,8 +24,8 @@ def read_metadata(source : io.BufferedIOBase):
             source.seek(result,0)
             return True                
     assert seek_to_magic(),'Magic not found'
-    header = unpack(EVB_PACK_HEADER, source.read(64))
-    main_node = unpack(EVB_NODE_MAIN, source.read(16))        
+    header = unpack(EVB_PACK_HEADER, source.read(EVB_PACK_HEADER[-1]))
+    main_node = unpack(EVB_NODE_MAIN, source.read(EVB_NODE_MAIN[-1]))        
     source.read(11) # pad(11)
     main_node['data'] = source.read(main_node['size'] - 16 - 11) # appends main node data (contained pad)
     source.read(4) # pad(4)
@@ -63,7 +63,7 @@ def generate_nodes(main_node):
 
         named_node = unpack_named()
         optional_node = unpack_optional(named_node)
-        complete_node = decodeNode(**named_node,**optional_node)
+        complete_node = decodeNode(**(named_node or None),**(optional_node or {}))
         if complete_node: yield complete_node
 
 if __name__ == "__main__":
@@ -80,18 +80,19 @@ if __name__ == "__main__":
     except AssertionError as e:
         print('ERROR : File magic mismatch:',e)        
         sys.exit(1)            
-    nodes = generate_nodes(main_node)
-    
-    def traverse(node,path_prefix=output,level=0):
+    nodes = generate_nodes(main_node)        
+    source.read(12)
+    def traverse(node,path_prefix=output,level=0):        
         path = os.path.join(path_prefix,node['name'])
         print(end='...' * level)
         if node['type'] == NODE_TYPE_FILE:
-            with open(path,'wb') as output:
+            with open(path,'wb') as output:                
                 rsize = node['original_size']
                 ssize = node['stored_size']
                 if rsize != ssize:
-                    print('Decompressing (%d bytes -> %d bytes)' % (ssize,rsize),path)
-                    source.read(12) # for compressed content only
+                    print(hex(source.tell()),source.read(12).hex(' '))
+                    source.seek(-12,1)
+                    print('Decompressing (%d bytes -> %d bytes)' % (ssize,rsize),path)                    
                     decompressed = decompress(source.read(ssize),strict=True)                    
                     output.write(decompressed)
                 else:
