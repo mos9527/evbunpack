@@ -13,11 +13,11 @@ EVB_NODE_MAIN = [
 
 EVB_NODE_NAMED = [
     ('H','objects_count'), # for non-folders,this value will remain 0
-    ('c',''),
-    ('%ds', 'name'),
-    ('3s', ''),
+    ('2s',''),
+    ('%ds', 'name'), # args[0] - filename buffer length
+    ('2s', ''),
     ('B', 'type'),
-    4  # the length of the `pad` & `type`
+    3  # the length of the 2s + type
 ]
 
 # there's a certain amount of pad bytes that's decided by `EVB_NODE_NAMED['type']`
