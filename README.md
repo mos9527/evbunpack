@@ -7,8 +7,18 @@
 ### 安装
 	pip install evbunpack
 ### 用法
-	python -m evbunpack [input] [output]
 
+	usage: __main__.py [-h] [--legacy] file output
+
+	Enigma Vitural Box 解包工具
+
+	positional arguments:
+	file        封包 EXE 或外部封包路径
+	output      保存路径
+
+	optional arguments:
+	-h, --help  show this help message and exit
+	--legacy    启用兼容模式，适用于老版本封包
 ### 示例
 	python -m evbunpack Lycoris_radiata.mys ../biman5_chs_moe
 	
