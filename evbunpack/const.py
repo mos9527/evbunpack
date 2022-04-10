@@ -4,11 +4,10 @@ EVB_PACK_HEADER = [
     64
 ]
 
-EVB_OFFSET_BLOCK = [
-    ('H','size'),
-    ('6s',''),
-    ('I','stored_size'),
-    12
+EVB_CHUNK_BLOCK = [
+    ('I','size'),
+    ('I',''),    
+    8
 ]
 
 EVB_HEADER_NODE = [

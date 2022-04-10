@@ -1,22 +1,42 @@
 # by greats3an 2022
-import struct,os
+import struct,os,array,time,math,sys
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
 from evbunpack.aplib import decompress
 from evbunpack.const import *
 
-def write_bytes(fd,out_fd,size,chunk_size=65536,chunk_process=None):
+_tick,_val,_max = 0,0,0
+def report_extraction_progress(message,now,total):
+    # Extraction rate display. Figured it'd be less boring to have cool digits rapidly changing on screen...lol
+    phases = (' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')        
+    _base  = lambda x:int(math.log2(x) // 10 if x > 0 else 0)
+    _hrs   = lambda x:'%.2f' % (x/2**(10*_base(x))) + ('B', 'kB', 'MB', 'GB', 'TB')[_base(x)]
+    global _tick,_val,_max    
+    if _max != total:
+        _max = total
+        _val = now
+        _tick = time.time()
+    dt = time.time() - _tick
+    dy = now - _val
+    _tick = time.time()
+    _val = now
+    r = dy / dt
+    print(phases[len(phases) * now//total],message,_hrs(now),'/',_hrs(total),_hrs(r)+'/s',' ' * 20,end='\r')
+
+def write_bytes(fd,out_fd,size,chunk_sizes=None,chunk_process=None,default_chunksize=65536):
     bytes_read   = 0
     bytes_wrote = 0
     inital_offset = fd.tell()
     while bytes_read < size:
-        print(bytes_read,'/',size,end='\r')
-        size_to_read = min(chunk_size,size - (fd.tell() - inital_offset))
+        report_extraction_progress('Extracting...',bytes_read,size)
         
+        chunk_size = next(chunk_sizes) if chunk_sizes else default_chunksize        
+        size_to_read = min(chunk_size,size - (fd.tell() - inital_offset))
+
         chunk = fd.read(size_to_read)
         bytes_read += len(chunk)
 
-        chunk = chunk if not chunk_process else chunk_process(chunk)
+        chunk = chunk if not chunk_process else chunk_process(chunk)        
         
         bytes_wrote += out_fd.write(chunk)
     return bytes_wrote
@@ -59,16 +79,25 @@ def read_optional_file_node(src):
     blk = src.read(EVB_NODE_OPTIONAL_FILE[-1])    
     return unpack(EVB_NODE_OPTIONAL_FILE, blk)                
 
-def read_offset_block(src):
-    blk = src.read(EVB_OFFSET_BLOCK[-1])    
-    return unpack(EVB_OFFSET_BLOCK, blk)                
+def read_chunk_block(src):
+    blk = src.read(EVB_CHUNK_BLOCK[-1])    
+    return unpack(EVB_CHUNK_BLOCK, blk)                
+
+def read_pack_header(src):
+    blk = src.read(EVB_PACK_HEADER[-1])    
+    return unpack(EVB_PACK_HEADER, blk)                
+
+def read_main_node(src):
+    blk = src.read(EVB_NODE_MAIN[-1])    
+    return unpack(EVB_NODE_MAIN, blk)                
+
 
 def pe_external_tree(fd):
     # Both PE and external packages work with this method
     start = seek_to_magic(fd)
     assert start is not False,'Magic not found'
-    unpack(EVB_PACK_HEADER, fd.read(EVB_PACK_HEADER[-1]))
-    main_node = unpack(EVB_NODE_MAIN, fd.read(EVB_NODE_MAIN[-1]))  
+    read_pack_header(fd)
+    main_node = read_main_node(fd)
     abs_offset = start + main_node['size'] + 68 # offset from the head of the stream
     fd.seek(1,1)
     while True:
@@ -90,7 +119,7 @@ def legacy_pe_tree(fd):
     # Older executables has their file table and content placed together
     # Courtesy of evb-extractor!
     assert seek_to_magic(fd) is not False,'Magic not found'
-    unpack(EVB_PACK_HEADER, fd.read(EVB_PACK_HEADER[-1]))   
+    read_pack_header(fd)
     seek_origin = 0 
     while True:    
         seek_origin = fd.tell()            
@@ -144,27 +173,22 @@ if __name__ == "__main__":
                 if not compression_flag and rsize != ssize:    
                     compression_flag = True
                     fd.seek(offset)
-                    print('...Compression detected. Using 0x%x as initial offset' % offset)    
-                if compression_flag:
-                    print('...Starting from 0x%x' % fd.tell())
-                    
-                    offset_blk = read_offset_block(fd)                     
-                    fd.seek(offset_blk['size'] - EVB_OFFSET_BLOCK[-1],1) # TODO : make compatible with more PEs
-                    
-                    
-                    print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),offset_blk['size']))                    
-                    ssize = ssize - offset_blk['size']
-                    
-                    head = fd.read(16)
-                    fd.seek(-16,1)
-                    print(hex(fd.tell()).ljust(8), head.hex(' '),head,sep=' | ')                    
-                    
-                    wsize = write_bytes(fd,output,ssize,chunk_size=ssize,chunk_process=decompress)
-                    print('Wrote',wsize,'vs',rsize)
+                    print('...Compression detected. Using 0x%x as initial offset' % offset)
+                if compression_flag:                    
+                    chunks_blk = read_chunk_block(fd)                                                                             
+                    blkChunkData = fd.read(chunks_blk['size'] - EVB_CHUNK_BLOCK[-1])
+                    arrChunkData = [val for idx,val in enumerate(array.array('I',blkChunkData)) if idx % 3 == 0]
+                    # Chunk data comes in 12-bytes rotation: Chunk size (4bytes), Total size (4bytes), Padding (4bytes)
+                    # But with the last Chunk size, it does not come with Total size or Padding...
+                    # I'm using array here to quickly unpack every 3rd elements unpacked. Which should always give us Chunk size
+                    # Even if the last 8bytes is missing                    
+                    print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),chunks_blk['size']))                    
+                    wsize = write_bytes(fd,output,size=ssize - chunks_blk['size'],chunk_sizes=completed(arrChunkData),chunk_process=decompress)
+                    assert wsize == rsize,"Incorrect size"
                 else:
                     fd.seek(offset)
                     print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset))
-                    write_bytes(fd,output,ssize)
+                    write_bytes(fd,output,size=ssize)
         elif node['type'] == NODE_TYPE_FOLDER:        
             if not os.path.isdir(path):
                 os.makedirs(path)
@@ -172,5 +196,14 @@ if __name__ == "__main__":
             for i in range(0,node['objects_count']):
                 traverse(next(nodes),path_prefix=path,level=level + 1)
     print('[-] Beginning traversal...')
-    traverse(next(nodes))
-    print('[!] Extraction complete')
+    try:
+        traverse(next(nodes))
+    except StopIteration:        
+        print('=======================================')
+        print('Failed to traverse file system info.')
+        print('Is this package made with an older version of Engima Virtual Box?')
+        print('If so, try using --legacy to see if that helps.')
+        print('=======================================')
+        sys.exit(1)
+    print('[!] Extraction complete',' ' * 20)
+    sys.exit(0)
