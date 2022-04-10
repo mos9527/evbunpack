@@ -151,12 +151,14 @@ if __name__ == "__main__":
                     offset_blk = read_offset_block(fd)                     
                     fd.seek(offset_blk['size'] - EVB_OFFSET_BLOCK[-1],1) # TODO : make compatible with more PEs
                     
+                    
                     print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),offset_blk['size']))                    
                     ssize = ssize - offset_blk['size']
                     
                     head = fd.read(16)
                     fd.seek(-16,1)
                     print(hex(fd.tell()).ljust(8), head.hex(' '),head,sep=' | ')                    
+                    
                     wsize = write_bytes(fd,output,ssize,chunk_size=ssize,chunk_process=decompress)
                     print('Wrote',wsize,'vs',rsize)
                 else:
