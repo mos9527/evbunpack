@@ -5,6 +5,22 @@ from mmap import mmap,ACCESS_READ
 from evbunpack.aplib import decompress
 from evbunpack.const import *
 
+def write_bytes(fd,out_fd,size,chunk_size=65536,chunk_process=None):
+    bytes_read   = 0
+    bytes_wrote = 0
+    inital_offset = fd.tell()
+    while bytes_read < size:
+        print(bytes_read,'/',size,end='\r')
+        size_to_read = min(chunk_size,size - (fd.tell() - inital_offset))
+        
+        chunk = fd.read(size_to_read)
+        bytes_read += len(chunk)
+
+        chunk = chunk if not chunk_process else chunk_process(chunk)
+        
+        bytes_wrote += out_fd.write(chunk)
+    return bytes_wrote
+
 def unpack(structure, buffer, *args, **extra):
     '''Unpack buffer by structure given'''    
     fmt, desc = zip(*filter(lambda p:isinstance(p, tuple),structure))    
@@ -114,7 +130,9 @@ if __name__ == "__main__":
         nodes = completed(legacy_pe_tree(fd))
     else:
         nodes = completed(pe_external_tree(fd))
+    compression_flag = False
     def traverse(node,path_prefix=output,level=0):        
+        global compression_flag
         path = os.path.join(path_prefix,node['name'])
         print(end='...' * level)
         if node['type'] == NODE_TYPE_FILE:
@@ -123,17 +141,28 @@ if __name__ == "__main__":
                 rsize = node['original_size']
                 ssize = node['stored_size']
                 offset = node['offset']
-                fd.seek(offset)
-                if rsize != ssize:        
-                    offset_blk = read_offset_block(fd)                    
-                    print('...Decompress [size=0x%x, offset=0x%x, offsetBlk=0x%x]' % (ssize,offset,offset_blk['size']))
+                if not compression_flag and rsize != ssize:    
+                    compression_flag = True
+                    fd.seek(offset)
+                    print('...Compression detected. Using 0x%x as initial offset' % offset)    
+                if compression_flag:
+                    print('...Starting from 0x%x' % fd.tell())
+                    
+                    offset_blk = read_offset_block(fd)                     
                     fd.seek(offset_blk['size'] - EVB_OFFSET_BLOCK[-1],1) # TODO : make compatible with more PEs
-                    wfile = decompress(fd.read(ssize),True)
-                    assert len(wfile) == rsize,"Decompression failed"
-                    output.write(wfile)
+                    
+                    print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),offset_blk['size']))                    
+                    ssize = ssize - offset_blk['size']
+                    
+                    head = fd.read(16)
+                    fd.seek(-16,1)
+                    print(hex(fd.tell()).ljust(8), head.hex(' '),head,sep=' | ')                    
+                    wsize = write_bytes(fd,output,ssize,chunk_size=ssize,chunk_process=decompress)
+                    print('Wrote',wsize,'vs',rsize)
                 else:
+                    fd.seek(offset)
                     print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset))
-                    output.write(fd.read(ssize))
+                    write_bytes(fd,output,ssize)
         elif node['type'] == NODE_TYPE_FOLDER:        
             if not os.path.isdir(path):
                 os.makedirs(path)

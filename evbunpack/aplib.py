@@ -134,7 +134,7 @@ class APLib(object):
         raise NotImplementedError
 
 
-def decompress(data, strict=False):
+def decompress(data, strict=True):
     packed_size = None
     packed_crc = None
     orig_size = None

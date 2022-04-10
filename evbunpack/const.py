@@ -5,8 +5,9 @@ EVB_PACK_HEADER = [
 ]
 
 EVB_OFFSET_BLOCK = [
-    ('I','size'),
-    ('8s','what'),
+    ('H','size'),
+    ('6s',''),
+    ('I','stored_size'),
     12
 ]
 
@@ -60,8 +61,6 @@ EVB_NODE_OPTIONAL_PE_FILE = [
     ('4s',''),
     49 
 ]
-# ...where when `type` is 2 (file),the total bytes of the node is (53) with
-#  additional 13 bytes of pad (unless the file is the last one on the list)
 
 NODE_TYPE_MAIN   = 0
 NODE_TYPE_FILE   = 2
