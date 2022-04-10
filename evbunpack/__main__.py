@@ -1,4 +1,5 @@
-# by greats3an 2022
+#-*- coding: utf-8 -*-
+# Copy
 import struct,os,array,time,math,sys
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
@@ -20,7 +21,7 @@ def report_extraction_progress(message,now,total):
     dy = now - _val
     _tick = time.time()
     _val = now
-    r = dy / dt
+    r = dy / dt if dt > 0 else dy
     print(phases[len(phases) * now//total],message,_hrs(now),'/',_hrs(total),_hrs(r)+'/s',' ' * 20,end='\r')
 
 def write_bytes(fd,out_fd,size,chunk_sizes=None,chunk_process=None,default_chunksize=65536):
@@ -91,7 +92,6 @@ def read_main_node(src):
     blk = src.read(EVB_NODE_MAIN[-1])    
     return unpack(EVB_NODE_MAIN, blk)                
 
-
 def pe_external_tree(fd):
     # Both PE and external packages work with this method
     start = seek_to_magic(fd)
@@ -152,7 +152,12 @@ if __name__ == "__main__":
     parser.add_argument('file', help='封包 EXE 或外部封包文件路径')
     parser.add_argument('output', help='保存路径')
     args = parser.parse_args()
+    
+    sys.stdout = sys.stderr
+    # Redirect logs to stderr
     file, output ,legacy = args.file, args.output , args.legacy
+    if args.legacy:
+        print('[!] Running in legacy mode!')
     print('[-] Reading',file)    
     fd = open(file, 'rb')    
     if legacy:
@@ -177,18 +182,18 @@ if __name__ == "__main__":
                 if compression_flag:                    
                     chunks_blk = read_chunk_block(fd)                                                                             
                     blkChunkData = fd.read(chunks_blk['size'] - EVB_CHUNK_BLOCK[-1])
-                    arrChunkData = [val for idx,val in enumerate(array.array('I',blkChunkData)) if idx % 3 == 0]
+                    arrChunkData = (val for idx,val in enumerate(array.array('I',blkChunkData)) if idx % 3 == 0)
                     # Chunk data comes in 12-bytes rotation: Chunk size (4bytes), Total size (4bytes), Padding (4bytes)
                     # But with the last Chunk size, it does not come with Total size or Padding...
-                    # I'm using array here to quickly unpack every 3rd elements unpacked. Which should always give us Chunk size
-                    # Even if the last 8bytes is missing                    
+                    # I'm using array here to quickly filter every 3rd elements unpacked. Which should always give us Chunk size
+                    # Even if the last 8bytes is missing
                     print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),chunks_blk['size']))                    
                     wsize = write_bytes(fd,output,size=ssize - chunks_blk['size'],chunk_sizes=completed(arrChunkData),chunk_process=decompress)
                     assert wsize == rsize,"Incorrect size"
                 else:
                     fd.seek(offset)
                     print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset))
-                    write_bytes(fd,output,size=ssize)
+                    write_bytes(fd,output,size=ssize)                       
         elif node['type'] == NODE_TYPE_FOLDER:        
             if not os.path.isdir(path):
                 os.makedirs(path)
@@ -198,12 +203,11 @@ if __name__ == "__main__":
     print('[-] Beginning traversal...')
     try:
         traverse(next(nodes))
-    except StopIteration:        
-        print('=======================================')
-        print('Failed to traverse file system info.')
-        print('Is this package made with an older version of Engima Virtual Box?')
-        print('If so, try using --legacy to see if that helps.')
-        print('=======================================')
+    except StopIteration:                
+        print('[!] 索引创建失败。若解包对象由老版本 Engima Virtual Box 创建，请启用 --legacy 选项')      
+        sys.exit(1)
+    except AssertionError as e:
+        print('[!] 封包无效',e)
         sys.exit(1)
     print('[!] Extraction complete',' ' * 20)
     sys.exit(0)

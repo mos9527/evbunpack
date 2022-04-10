@@ -21,7 +21,7 @@
 	--legacy    启用兼容模式，适用于老版本封包
 ### 示例
 	python -m evbunpack Lycoris_radiata.mys ../biman5_chs_moe
-	
+	python -m evbunpack biman2.exe extract --legacy
 ## TODO
 - 增加注册表解包...?
 

@@ -1,6 +1,6 @@
-'''Constant values needed for unpacking'''
+#-*- coding: utf-8 --
 EVB_PACK_HEADER = [
-    ('4s', 'signature'),   # Would always be ('EVB\x00') if valaid
+    ('4s', 'signature'),   # Would always be ('EVB\x00') if valid
     64
 ]
 
@@ -31,17 +31,11 @@ EVB_NODE_NAMED = [
     3  # the length of the 2s + type
 ]
 
-# there's a certain amount of pad bytes that's decided by `EVB_NODE_NAMED['type']`
-# ...where when `type` is 3 (folder),the total bytes of the node is (40)
-
 EVB_NODE_OPTIONAL_FILE = [
     ('2s', ''),
     ('I', 'original_size'),
     ('4s',''),
-    # Time
-    ('Q',''),
-    ('Q',''),
-    ('Q',''),
+    ('24s','filetime'),
     ('15s',''),
     ('I', 'stored_size'),
     53
@@ -51,10 +45,7 @@ EVB_NODE_OPTIONAL_PE_FILE = [
     ('2s', ''),
     ('I', 'original_size'),
     ('4s',''),
-    # Time
-    ('Q',''),
-    ('Q',''),
-    ('Q',''),
+    ('24s','filetime'),
     ('7s',''),
     ('I', 'stored_size'),
     ('4s',''),

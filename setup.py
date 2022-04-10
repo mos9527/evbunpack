@@ -4,9 +4,9 @@ with open("README.md", "r",encoding='utf-8') as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="evbunpack", # Replace with your own username
+    name="evbunpack",
     version=evbunpack.__version__,
-    author="greats3an",
+    author=evbunpack.__author__,
     author_email="greats3an@gmail.com",
     description="Enigma Virtual Box 解包工具",
     long_description=long_description,

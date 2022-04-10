@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#-*- coding: utf-8 --
 """A pure Python module for decompressing aPLib compressed data
 
 Adapted from the original C source code from http://ibsensoftware.com/files/aPLib-1.1.1.zip
