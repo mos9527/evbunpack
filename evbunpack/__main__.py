@@ -101,8 +101,11 @@ def pe_external_tree(fd):
     abs_offset = start + main_node['size'] + 68 # offset from the head of the stream
     fd.seek(1,1)
     while True:
-        header_node = read_header_node(fd)
-        named_node = read_named_node(fd)
+        try:
+            header_node = read_header_node(fd)
+            named_node = read_named_node(fd)
+        except struct.error:
+            return # Potential EOF exception
         if   named_node['type'] == NODE_TYPE_FILE:
             optional_node = read_optional_file_node(fd)                        
             optional_node['offset'] = abs_offset
@@ -122,9 +125,12 @@ def legacy_pe_tree(fd):
     read_pack_header(fd)
     seek_origin = 0 
     while True:    
-        seek_origin = fd.tell()            
-        header_node = read_header_node(fd)        
-        named_node = read_named_node(fd)        
+        seek_origin = fd.tell()
+        try:
+            header_node = read_header_node(fd)
+            named_node = read_named_node(fd)
+        except struct.error:
+            return # Potential EOF exception  
         if   named_node['type'] == NODE_TYPE_FILE:
             fd.seek(seek_origin + header_node['size'] + 4 - EVB_NODE_OPTIONAL_PE_FILE[-1])
             optional_node = read_optional_legacy_pe_file_node(fd)                  
