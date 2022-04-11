@@ -181,9 +181,9 @@ if __name__ == "__main__":
                 rsize = node['original_size']
                 ssize = node['stored_size']
                 offset = node['offset']
+                fd.seek(offset)
                 if not compression_flag and rsize != ssize:    
                     compression_flag = True
-                    fd.seek(offset)
                     print('...Compression detected. Using 0x%x as initial offset' % offset)
                 if compression_flag:                    
                     chunks_blk = read_chunk_block(fd)                                                                             
@@ -197,7 +197,6 @@ if __name__ == "__main__":
                     wsize = write_bytes(fd,output,size=ssize - chunks_blk['size'],chunk_sizes=completed(arrChunkData),chunk_process=decompress)
                     assert wsize == rsize,"Incorrect size"
                 else:
-                    fd.seek(offset)
                     print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset))
                     write_bytes(fd,output,size=ssize)                       
         elif node['type'] == NODE_TYPE_FOLDER:        
