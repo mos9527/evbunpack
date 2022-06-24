@@ -18,5 +18,6 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],install_requires=[],
+    entry_points={"console_scripts": ["evbunpack=evbunpack.__main__:__main__"]},
     python_requires='>=3.0',
 )
