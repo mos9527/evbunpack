@@ -1,16 +1,17 @@
 #-*- coding: utf-8 -*-
 # Copy
-import re
 import struct,os,array,time,math,sys
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
 from evbunpack.aplib import decompress
 from evbunpack.const import *
+from evbunpack import __version__
 
 ORIGINAL_PE_SUFFIX = '_original.exe'
 FOLDER_ALTNAMES = {
     '%DEFAULT FOLDER%' : ''
 }
+
 class Progress:
     _phases = (' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')        
     _base  = lambda x:int(math.log2(x) // 10 if x > 0 else 0)
@@ -30,7 +31,7 @@ class Progress:
         self._tick = time.time()
         self._val = now
         r = dy / dt if dt > 0 else dy
-        print('[%s]'%self._phases[len(self._phases) * now//total],message,Progress._hrs(now),'/',Progress._hrs(total),Progress._hrs(r)+'/s',' ' * 20,end='\r')
+        print('[%s]'%self._phases[len(self._phases) * now//total],message,Progress._hrs(now),'/',Progress._hrs(total),Progress._hrs(r)+'/s',' ' * 50,end='\r')
 
 Progress.instance = Progress()
 def report_extraction_progress(message,now,total):
@@ -166,18 +167,44 @@ def process_file_node(fd,path,node):
         fd.seek(offset)
         if rsize != ssize: # Compression detected                   
             chunks_blk = read_chunk_block(fd)                                                                             
-            blkChunkData = fd.read(chunks_blk['size'] - EVB_CHUNK_BLOCK[-1])
+            blkChunkData = fd.read(chunks_blk['size'] - get_size_by_struct(EVB_CHUNK_BLOCK))
             arrChunkData = (val for idx,val in enumerate(array.array('I',blkChunkData)) if idx % 3 == 0)
             # Chunk data comes in 12-bytes rotation: Chunk size (4bytes), Total size (4bytes), Padding (4bytes)
             # But with the last Chunk size, it does not come with Total size or Padding...
             # Thus filtering only every 3rd elements works. Which should always give us Chunk size
             # Even if the last 8 bytes is missing
-            print('...Decompress [ssize=%d, rsize=%d, offset=0x%x, offsetBlk=0x%x]' % (ssize,rsize,fd.tell(),chunks_blk['size']),end='')                    
-            wsize = write_bytes(fd,output,size=ssize - chunks_blk['size'],chunk_sizes=arrChunkData,chunk_process=decompress)
+            wsize = write_bytes(
+                fd,output,
+                size=ssize - chunks_blk['size'],
+                chunk_sizes=arrChunkData,
+                chunk_process=decompress,
+                desc='Decompress [offset=0x%x, offsetBlk=0x%x]' % (fd.tell(),chunks_blk['size'])
+            )
             assert wsize == rsize,"Incorrect size"
-        else:
-            print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset),end='')
-            write_bytes(fd,output,size=ssize)      
+        else:            
+            write_bytes(
+                fd,output,
+                size=ssize,
+                desc='Write [size=0x%x, offset=0x%x]' % (ssize,offset)
+            )
+
+def restore_pe(file):
+    from pefile import PE
+    pe = PE(file,fast_load=True)
+    # Helpers
+    find_section = lambda name:next(filter(lambda x:name in x.Name,pe.sections))
+    find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))
+    # Remove .enigma sections
+    pe.__data__ = pe.__data__[:find_section(b'.enigma1').PointerToRawData]
+    pe.FILE_HEADER.NumberOfSections -= 2
+    # Restore rdata & idata sections
+    find_data_directory('TLS').VirtualAddress = find_section(b'.rdata').VirtualAddress
+    find_data_directory('ENTRY_IMPORT').VirtualAddress = find_section(b'.idata').VirtualAddress
+    # Write to new file
+    pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
+    pe_name = os.path.join(output,pe_name).replace('\\','/')
+    pe.write(pe_name)
+    print('[-] Original PE saved:',pe_name)
 
 def seek_to_magic(fd,magic):    
     with mmap(fd.fileno(),length=0,access=ACCESS_READ) as mm:
@@ -191,12 +218,22 @@ if __name__ == "__main__":
     parser = ArgumentParser(description='Enigma Vitural Box Unpacker')
     parser.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
     parser.add_argument('--legacy',help='Enable compatibility mode to work with older (6.x) EVB packages',action='store_true',default=False)
+    parser.add_argument('--list',help='Don\'t extract the files and print the TOC only (surpresses other output)',action='store_true',default=False)
     parser.add_argument('file', help='File to be unpacked')
     parser.add_argument('output', help='Extract destination directory')
     args = parser.parse_args()    
     sys.stdout = sys.stderr
     # Redirect logs to stderr
-    file, output ,ignore_pe , legacy = args.file, args.output , args.ignore_pe , args.legacy
+    file, output ,ignore_pe , legacy , list_files_only = args.file, args.output , args.ignore_pe , args.legacy , args.list
+    if list_files_only:
+        print = lambda *a,**k:None
+    print('Enigma Virtual Box Unpacker v%s' % __version__)
+    # Preparing base path
+    os.makedirs(output,exist_ok=True)    
+    if ignore_pe:
+        print('[!] Skipping PE restoration')
+    if legacy:
+        print('[!] Legacy mode enabled')
     print('[-] Searching for magic')
     magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
     # I was having really weird issues with mmap on my machine, aleast in python,
@@ -207,26 +244,11 @@ if __name__ == "__main__":
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
-        if hdr == b'MZ' and not ignore_pe:
+        if hdr == b'MZ' and not ignore_pe and not list_files_only:
             # Depack PEs
-            print('[-] Recovering original PE')
-            fd.seek(0x400)
-            # The main executable is placed outside the PE header section
-            # which is 0x400 bytes
-            from pefile import PE
-            # Read only the next header section
-            pe = PE(data=fd.read(0x400))
-            # Calculate size by using the last section
-            size = pe.sections[-1].PointerToRawData + pe.sections[-1].Misc_VirtualSize
-            alignment = pe.OPTIONAL_HEADER.FileAlignment
-            size = math.ceil(size / alignment) * alignment
-            # Write the orignal PE
-            fd.seek(0x400)
-            pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
-            with open(os.path.join(output,pe_name),'wb') as out_fd:
-                write_bytes(fd,out_fd,size,desc='Dumping original PE')
-        fd.seek(magic) 
+            restore_pe(file)
         # Dump EVB content
+        fd.seek(magic)
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
         else:
@@ -246,9 +268,10 @@ if __name__ == "__main__":
             if level == 0 and node['type'] == NODE_TYPE_FOLDER:
                 node['name'] = FOLDER_ALTNAMES.get(node['name'],node['name'])                
             path = os.path.join(path_prefix,node['name']).replace('\\','/')
-            print(get_prefix(level),path)
+            sys.stderr.write('   ' + get_prefix(level) + ' ' + path + '\n')
             if node['type'] == NODE_TYPE_FILE:
-                process_file_node(fd,path,node)
+                if not list_files_only:
+                    process_file_node(fd,path,node)
             elif node['type'] == NODE_TYPE_FOLDER:
                 if not os.path.isdir(path):
                     os.makedirs(path)
@@ -256,9 +279,10 @@ if __name__ == "__main__":
                     last = _ == node['objects_count'] - 1
                     last_stack[level + 1] = last
                     traverse_next_node(next(nodes),path_prefix=path,level=level + 1)        
-        try:
+        try:            
             main_node = next(nodes)
-            print('[Virtual Box Filetable]')
+            sys.stderr.write('[Virtual Box Filetable]\n')
+            sys.stderr.flush()
             for _ in range(main_node['objects_count']):
                 last = _ == main_node['objects_count'] - 1
                 last_stack[0] = last                

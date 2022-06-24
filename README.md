@@ -6,7 +6,7 @@ Unpacks PE / external external packages made with [Enigma Vitrual Box](https://e
 
 Supports compressed archives and basically every recent version of EVB (tested 6.x & 9.x)
 
-Can (somewhat) also restore the original executable for easier reverse engineering
+Can also restore the original executable for easier reverse engineering
 
 ### Installation
 	pip install evbunpack
@@ -14,7 +14,7 @@ If PE restoration is desired, install [pefile](https://github.com/erocarrera/pef
 
 ### Usage
 
-    usage: __main__.py [-h] [--legacy] file output
+    usage: __main__.py [-h] [--ignore-pe IGNORE_PE] [--legacy] [--list] file output
 
     Enigma Vitural Box Unpacker
 
@@ -27,10 +27,11 @@ If PE restoration is desired, install [pefile](https://github.com/erocarrera/pef
       --ignore-pe IGNORE_PE
                             Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)
       --legacy              Enable compatibility mode to work with older (6.x) EVB packages
+      --list                Don't extract the files and print the TOC only (surpresses other output)
 
 ### Examples
 	python -m evbunpack Lycoris_radiata.mys ../biman5_chs_moe
-	python -m evbunpack biman2.exe extract --legacy
+	python -m evbunpack biman2.exe ./extract --legacy
 ## TODO
 - ~~Restore original PEs~~
 - Registery configuration extraction
