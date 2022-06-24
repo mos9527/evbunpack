@@ -51,10 +51,12 @@ def write_bytes(fd,out_fd,size,chunk_sizes=None,chunk_process=None,default_chunk
     print(' '* 120,end='\r') # clearing the line
     return bytes_wrote
 
-def read_bytes_by_struct(src,struct_):
+def get_size_by_struct(struct_):
     fmt , desc = make_format_by_struct(struct_)
-    size = struct.calcsize(fmt)
-    return src.read(size)
+    return struct.calcsize(fmt)
+
+def read_bytes_by_struct(src,struct_):
+    return src.read(get_size_by_struct(struct_))
 
 def make_format_by_struct(struct, *args):
     fmt, desc = zip(*filter(lambda p:isinstance(p, tuple),struct))    
@@ -101,7 +103,7 @@ def pe_external_tree(fd):
     hdr = read_pack_header(fd)
     assert hdr['signature'] == EVB_MAGIC, "Invalid singature"
     main_node = read_main_node(fd)    
-    abs_offset = fd.tell() + main_node['size'] # offset from the head of the stream       
+    abs_offset = fd.tell() + main_node['size'] - 12 # offset from the head of the stream       
     fd.seek(-1,1)
     yield main_node
     while True:
@@ -136,7 +138,7 @@ def legacy_pe_tree(fd):
         except struct.error:
             return # Potential EOF exception  
         if   named_node['type'] == NODE_TYPE_FILE:
-            fd.seek(seek_origin + header_node['size'] + 4 - EVB_NODE_OPTIONAL_PE_FILE[-1])
+            fd.seek(seek_origin + header_node['size'] + 4 - get_size_by_struct(EVB_NODE_OPTIONAL_PE_FILE))
             optional_node = read_optional_legacy_pe_file_node(fd)                  
             optional_node['offset'] = fd.tell()
             fd.seek(optional_node['stored_size'],1)
@@ -177,14 +179,13 @@ def process_file_node(fd,path,node):
             print('...Write [size=0x%x, offset=0x%x]' % (ssize,offset),end='')
             write_bytes(fd,output,size=ssize)      
 
-def seek_to_magic(src,magic):    
-    src.seek(0) # TODO : figure out how not adding this line makes tell() return negative values
-    with mmap(src.fileno(),length=0,offset=0,access=ACCESS_READ) as mm:
+def seek_to_magic(fd,magic):    
+    with mmap(fd.fileno(),length=0,access=ACCESS_READ) as mm:
         result = mm.find(magic)
         if result < 0: return False
-        print('[-] Found magic at',hex(result))
-        src.seek(result,0)
-        return result
+        print('[-] Found magic at',hex(result))    
+    fd.seek(result)
+    return result
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Enigma Vitural Box Unpacker')
@@ -196,6 +197,13 @@ if __name__ == "__main__":
     sys.stdout = sys.stderr
     # Redirect logs to stderr
     file, output ,ignore_pe , legacy = args.file, args.output , args.ignore_pe , args.legacy
+    print('[-] Searching for magic')
+    magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
+    # I was having really weird issues with mmap on my machine, aleast in python,
+    # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
+    # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
+    # what is going on here
+    assert not magic is False, "Magic not found"    
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
@@ -217,9 +225,8 @@ if __name__ == "__main__":
             pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
             with open(os.path.join(output,pe_name),'wb') as out_fd:
                 write_bytes(fd,out_fd,size,desc='Dumping original PE')
+        fd.seek(magic) 
         # Dump EVB content
-        print('[-] Searching for magic')
-        assert seek_to_magic(fd,EVB_MAGIC), "Magic not found"
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
         else:

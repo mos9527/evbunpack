@@ -6,7 +6,7 @@ Unpacks PE / external external packages made with [Enigma Vitrual Box](https://e
 
 Supports compressed archives and basically every recent version of EVB (tested 6.x & 9.x)
 
-Can also restore the original executable for easier reverse engineering
+Can (somewhat) also restore the original executable for easier reverse engineering
 
 ### Installation
 	pip install evbunpack
