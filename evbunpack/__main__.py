@@ -61,8 +61,12 @@ def read_bytes_by_struct(src,struct_):
 
 def make_format_by_struct(struct, *args):
     fmt, desc = zip(*filter(lambda p:isinstance(p, tuple),struct))    
-    fmt = f'<{"".join(fmt)}' % args
+    fmt = ('<' if type(struct[-1]) != str else struct[-1]) + ("".join(fmt)) % args
     return fmt,desc
+
+def pack(structure,*args):
+    fmt,desc = make_format_by_struct(structure)
+    return struct.pack(fmt,*args)
 
 def unpack(structure, buffer, *args, **extra):
     '''Unpack buffer by structure given'''    
@@ -189,17 +193,32 @@ def process_file_node(fd,path,node):
             )
 
 def restore_pe(file):
-    from pefile import PE
+    from pefile import PE, OPTIONAL_HEADER_MAGIC_PE_PLUS
     pe = PE(file,fast_load=True)
-    # Helpers
+    # Helpers    
     find_section = lambda name:next(filter(lambda x:name in x.Name,pe.sections))
-    find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))
+    find_section_by_va = lambda rva:next(filter(lambda x:x.VirtualAddress == rva,pe.sections))
+    find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))    
+    rva_from_va = lambda va:va - pe.OPTIONAL_HEADER.ImageBase
+    raw_pointer_from_rva = lambda rva,section:rva - section.VirtualAddress + section.PointerToRawData
+    # Trace and restore TLS Callback
+    tls = find_data_directory('TLS')    
+    tls_section = find_section_by_va(tls.VirtualAddress)
+    tls_struct = unpack(
+        TLS_DIRECTROY_PEPLUS if pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS else TLS_DIRECTROY_PE,
+        pe.__data__[tls_section.PointerToRawData:]
+    )
+    tls_callback = unpack(
+        EVB_ENIGMA1_TLS_CALLBACK_PEPLUS if pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS else EVB_ENIGMA1_TLS_CALLBACK_PE,
+        pe.__data__[raw_pointer_from_rva(rva_from_va(tls_struct['AddressOfCallbacks']),tls_section):]
+    )    
+    tls_struct = pack(
+        TLS_DIRECTROY_PEPLUS if pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS else TLS_DIRECTROY_PE,
+        *tls_struct.values()
+    )
     # Remove .enigma sections
     pe.__data__ = pe.__data__[:find_section(b'.enigma1').PointerToRawData]
     pe.FILE_HEADER.NumberOfSections -= 2
-    # Restore rdata & idata sections
-    find_data_directory('TLS').VirtualAddress = find_section(b'.rdata').VirtualAddress
-    find_data_directory('ENTRY_IMPORT').VirtualAddress = find_section(b'.idata').VirtualAddress
     # Write to new file
     pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
     pe_name = os.path.join(output,pe_name).replace('\\','/')
@@ -216,6 +235,7 @@ def seek_to_magic(fd,magic):
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Enigma Vitural Box Unpacker')
+    parser.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem. Useful if you want the PE only',action='store_true',default=False)
     parser.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
     parser.add_argument('--legacy',help='Enable compatibility mode to work with older (6.x) EVB packages',action='store_true',default=False)
     parser.add_argument('--list',help='Don\'t extract the files and print the TOC only (surpresses other output)',action='store_true',default=False)
@@ -224,7 +244,7 @@ if __name__ == "__main__":
     args = parser.parse_args()    
     sys.stdout = sys.stderr
     # Redirect logs to stderr
-    file, output ,ignore_pe , legacy , list_files_only = args.file, args.output , args.ignore_pe , args.legacy , args.list
+    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
     if list_files_only:
         print = lambda *a,**k:None
     print('Enigma Virtual Box Unpacker v%s' % __version__)
@@ -232,22 +252,27 @@ if __name__ == "__main__":
     os.makedirs(output,exist_ok=True)    
     if ignore_pe:
         print('[!] Skipping PE restoration')
+    if ignore_fs:
+        print('[!] Skipping virtual FS extraction')
     if legacy:
         print('[!] Legacy mode enabled')
-    print('[-] Searching for magic')
-    magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
-    # I was having really weird issues with mmap on my machine, aleast in python,
-    # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
-    # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
-    # what is going on here
-    assert not magic is False, "Magic not found"    
+  
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
         if hdr == b'MZ' and not ignore_pe and not list_files_only:
             # Depack PEs
             restore_pe(file)
+        if ignore_fs:
+            sys.exit(0)
         # Dump EVB content
+        print('[-] Searching for magic')
+        magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
+        # I was having really weird issues with mmap on my machine, aleast in python,
+        # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
+        # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
+        # what is going on here
+        assert not magic is False, "Magic not found"          
         fd.seek(magic)
         if legacy:
             nodes = completed(legacy_pe_tree(fd))

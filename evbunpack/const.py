@@ -1,6 +1,35 @@
 #-*- coding: utf-8 --
 EVB_MAGIC = b'EVB\x00'
 
+TLS_DIRECTROY_PE = [
+    ('I','RawDataStart'),
+    ('I','RawDataEnd'),
+    ('I','AddressOfIndex'),
+    ('I','AddressOfCallbacks'),
+    ('I','SizeOfZeroFill'),    
+    ('4s','Alignment'),
+]
+
+TLS_DIRECTROY_PEPLUS = [
+    ('Q','RawDataStart'),
+    ('Q','RawDataEnd'),
+    ('Q','AddressOfIndex'),
+    ('Q','AddressOfCallbacks'),
+    ('I','SizeOfZeroFill'),    
+    ('4s','Alignment')
+]
+
+EVB_ENIGMA1_TLS_CALLBACK_PE  = [    
+    ('I','TLS_ORIGINAL_CALLBACK_VA'),
+    ('I','TLS_ORIGINAL_SIZE'),   
+]
+
+EVB_ENIGMA1_TLS_CALLBACK_PEPLUS  = [
+    ('Q','TLS_ORIGINAL_CALLBACK_VA'),
+    ('I','TLS_ORIGINAL_SIZE'),   
+]
+
+
 EVB_PACK_HEADER = [
     ('4s', 'signature'),   # Would always be ('EVB\x00') if valid
     ('60s',''),    
