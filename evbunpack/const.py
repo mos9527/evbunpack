@@ -1,6 +1,32 @@
 #-*- coding: utf-8 --
 EVB_MAGIC = b'EVB\x00'
 
+
+PE_EXCEPTION = [
+    ('I','BEGIN_ADDRESS'),
+    ('I','END_ADDRESS'),
+    ('I','HANDLER_PTR'),  
+    ('I','HANDLER_DATA'),  
+    ('I','PROLOG_ADDRESS'),          
+]
+
+PE64_EXCEPTION = [
+    ('I','BEGIN_ADDRESS'),
+    ('I','END_ADDRESS'),
+    ('I','UNWIND_INFO'),    
+]
+
+EVB_ENIGMA1_HEADER = [
+    ('%ds',''), # Offset to import address
+    ('I','TLS_CALLBACK_RVA'),
+    ('I','IMPORT_ADDRESS'),
+    ('I','IMPORT_SIZE'),
+    ('I','RELOC_ADDRESS'),
+    ('I','RELOC_SIZE'),
+    ('I','TLS_ADDRESS'),
+    ('I','TLS_SIZE'),    
+]
+
 EVB_PACK_HEADER = [
     ('4s', 'signature'),   # Would always be ('EVB\x00') if valid
     ('60s',''),    

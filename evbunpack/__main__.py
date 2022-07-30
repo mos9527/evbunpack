@@ -3,6 +3,7 @@
 import struct,os,array,time,math,sys
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
+from io import BytesIO
 from evbunpack.aplib import decompress
 from evbunpack.const import *
 from evbunpack import __version__
@@ -13,25 +14,32 @@ FOLDER_ALTNAMES = {
 }
 
 class Progress:
+    tick_rate = 0.1 # in seconds
     _phases = (' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')        
     _base  = lambda x:int(math.log2(x) // 10 if x > 0 else 0)
-    _hrs   = lambda x:'%.2f' % (x/2**(10*Progress._base(x))) + ('B', 'kB', 'MB', 'GB', 'TB')[Progress._base(x)]        
+    _hrs   = lambda x:'%.2f' % (x/2**(10*Progress._base(x))) + ('B', 'kB', 'MB', 'GB', 'TB')[Progress._base(x)]
+    last = ''        
     def __init__(self) -> None:
         self._max = 0
         self._val = 0
         self._tick = time.time()
-
     def report(self,message,now,total):
         if self._max != total:
             self._max = total
             self._val = now
             self._tick = time.time()
         dt = time.time() - self._tick
+        if (dt < self.tick_rate): return
         dy = now - self._val
         self._tick = time.time()
         self._val = now
         r = dy / dt if dt > 0 else dy
-        print('[%s]'%self._phases[len(self._phases) * now//total],message,Progress._hrs(now),'/',Progress._hrs(total),Progress._hrs(r)+'/s',' ' * 50,end='\r')
+        s = ' '.join(['[%s]'%self._phases[len(self._phases) * now//total],message,Progress._hrs(now),'/',Progress._hrs(total),Progress._hrs(r)+'/s'])
+        print(s,' ' * max(len(self.last) - len(s),0),sep='',end='\r')
+        self.last = s
+
+    def clear(self):
+        print(' ' * len(self.last),end='\r')
 
 Progress.instance = Progress()
 def report_extraction_progress(message,now,total):
@@ -49,7 +57,7 @@ def write_bytes(fd,out_fd,size,chunk_sizes=None,chunk_process=None,default_chunk
         bytes_read += len(chunk)
         chunk = chunk if not chunk_process else chunk_process(chunk)                
         bytes_wrote += out_fd.write(chunk)
-    print(' '* 120,end='\r') # clearing the line
+    Progress.instance.clear()
     return bytes_wrote
 
 def get_size_by_struct(struct_):
@@ -61,8 +69,12 @@ def read_bytes_by_struct(src,struct_):
 
 def make_format_by_struct(struct, *args):
     fmt, desc = zip(*filter(lambda p:isinstance(p, tuple),struct))    
-    fmt = f'<{"".join(fmt)}' % args
+    fmt = ('<' if type(struct[-1]) != str else struct[-1]) + ("".join(fmt)) % args
     return fmt,desc
+
+def pack(structure,*args):
+    fmt,desc = make_format_by_struct(structure)
+    return struct.pack(fmt,*args)
 
 def unpack(structure, buffer, *args, **extra):
     '''Unpack buffer by structure given'''    
@@ -189,21 +201,103 @@ def process_file_node(fd,path,node):
             )
 
 def restore_pe(file):
-    from pefile import PE
+    # PEfile isn't the best for this job, but we'll get it done ;)
+    # TODO : Recaluclate SizeOfImage to match the acutal file
+    from pefile import PE,OPTIONAL_HEADER_MAGIC_PE_PLUS
+    print('[-] Loading PE...')
     pe = PE(file,fast_load=True)
-    # Helpers
+    PE64 = pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS
+    pe.__data__ = bytearray(pe.__data__) # This allows us to apply slicing on the PE data
+    # Helpers    
     find_section = lambda name:next(filter(lambda x:name in x.Name,pe.sections))
-    find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))
-    # Remove .enigma sections
-    pe.__data__ = pe.__data__[:find_section(b'.enigma1').PointerToRawData]
-    pe.FILE_HEADER.NumberOfSections -= 2
-    # Restore rdata & idata sections
-    find_data_directory('TLS').VirtualAddress = find_section(b'.rdata').VirtualAddress
-    find_data_directory('ENTRY_IMPORT').VirtualAddress = find_section(b'.idata').VirtualAddress
+    find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))    
+    # Data
+    enigma1 = pe.__data__[find_section(b'.enigma1').PointerToRawData:]
+    hdr = unpack(EVB_ENIGMA1_HEADER,enigma1,104 if PE64 else 76)
+    # Restore section with built-in offsets. All these ADDRESSes are VAs
+    find_data_directory('IMPORT').VirtualAddress = hdr['IMPORT_ADDRESS']
+    find_data_directory('IMPORT').Size = hdr['IMPORT_SIZE']
+    find_data_directory('RELOC').VirtualAddress = hdr['RELOC_ADDRESS']
+    find_data_directory('RELOC').Size = hdr['RELOC_SIZE']
+    print('[-] Rebuilding Exception directory...')
+    # Rebuild the exception directory
+    exception_dir = find_data_directory('EXCEPTION')    
+    exception_raw_ptr = pe.get_offset_from_rva(exception_dir.VirtualAddress)
+    exception_data = pe.__data__[exception_raw_ptr:exception_raw_ptr + exception_dir.Size]    
+    exception_struct = PE64_EXCEPTION if PE64 else PE_EXCEPTION
+    exception_end = 0
+    for i in range(0,exception_dir.Size,get_size_by_struct(exception_struct)):
+        block = unpack(exception_struct,exception_data[i:])
+        block['section'] = pe.get_section_by_rva(block['BEGIN_ADDRESS'])
+        exception_end = i
+        if b'.enigma' in block['section'].Name: 
+            break
+    exception_data = exception_data[:exception_end]
+    # Prepare partial TLS data for searching
+    tls_dir = find_data_directory('TLS')    
+    tls_raw_ptr = pe.get_offset_from_rva(tls_dir.VirtualAddress)
+    tls_data = bytearray(pe.__data__[tls_raw_ptr:tls_raw_ptr + tls_dir.Size])    
+    original_callback = hdr['TLS_CALLBACK_RVA'] + pe.OPTIONAL_HEADER.ImageBase
+    original_callback = struct.pack('<' + ('Q' if PE64 else 'I'),original_callback)
+    if (PE64): 
+        tls_data += original_callback       # AddressOfCallBacks
+    else:
+        tls_data[12:16] = original_callback # AddressOfCallBacks
+        tls_data = tls_data[:16]
+    # Destory .enigma* sections
+    pe.__data__ = pe.__data__[:find_section(b'.enigma1').PointerToRawData] + pe.__data__[find_section(b'.enigma2').PointerToRawData + find_section(b'.enigma2').SizeOfRawData:]
+    # If original program has a overlay, this will perserve it. Otherwise it's okay to remove them anyway.
+    assert pe.sections.pop().Name == b'.enigma2'
+    assert pe.sections.pop().Name == b'.enigma1'
+    pe.FILE_HEADER.NumberOfSections -= 2    
+    # NOTE: .enigma1 contains the VFS, as well as some Optional PE Header info as descrbied above
+    # NOTE: .enigma2 is a aplib compressed loader DLL. You can decompress it with aplib provided in this repo  
+    if (exception_data):
+        # Reassign the RVA & sizes    
+        print('[-] Rebuilt Exception directory. Size=0x%x' % len(exception_data))
+        # Find where this could be placed at...since EVB clears the original exception directory listings
+        # PEs with overlays won't work at all if EVB packed them.
+        # We must remove the sections and do NOT append anything new
+        offset = 0
+        for section in pe.sections:
+            offset_ = pe.__data__.find(b'\x00' * len(exception_data),section.PointerToRawData, section.PointerToRawData + section.SizeOfRawData)
+            if offset_ > 0: 
+                # Check for references in the Optional Data Directory
+                # The offset should not be referenced otherwise we would overwrite existing data
+                for header in pe.OPTIONAL_HEADER.DATA_DIRECTORY:
+                    if offset_ in range(header.VirtualAddress,header.VirtualAddress+header.Size):                        
+                        continue
+                    else:
+                        offset = offset_
+                        break
+        assert offset > 0,"Cannot place Exceptions Directory!"
+        section = pe.get_section_by_rva(pe.get_rva_from_offset(offset))
+        print('[-] Found suitable section to place Exception Directory. Name=%s RVA=0x%x' % (section.Name.decode(),offset - section.PointerToRawData))
+        pe.__data__[offset:offset+len(exception_data)] = exception_data
+        section.SizeOfRawData = max(section.SizeOfRawData,len(exception_data))
+        exception_dir.VirtualAddress = pe.get_rva_from_offset(offset)
+        exception_dir.Size = len(exception_data)
+    else:
+        print('[-] Original program does not contain Exception Directory.')
+        exception_dir.VirtualAddress = 0
+        exception_dir.Size = 0
+    offset = pe.__data__.find(tls_data)
+    # Append the exception section and assign the pointers
+    # Serach for TLS in memory map since it's not removed.
+    tls_dir = find_data_directory('TLS')
+    if (offset > 0):
+        print('[-] TLS Directory found. Offset=0x%x' % offset)
+        tls_dir.VirtualAddress = pe.get_rva_from_offset(offset)
+        tls_dir.Size = 40 if PE64 else 24
+    else:
+        print('[-] Original program does not utilize TLS.')
+        tls_dir.VirtualAddress = 0
+        tls_dir.Size = 0
     # Write to new file
     pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
-    pe_name = os.path.join(output,pe_name).replace('\\','/')
-    pe.write(pe_name)
+    pe_name = os.path.join(output,pe_name).replace('\\','/')    
+    new_file_data = pe.write()
+    write_bytes(BytesIO(new_file_data),open(pe_name,'wb+'),len(new_file_data),desc='Saving PE')
     print('[-] Original PE saved:',pe_name)
 
 def seek_to_magic(fd,magic):    
@@ -215,7 +309,8 @@ def seek_to_magic(fd,magic):
     return result
 
 if __name__ == "__main__":
-    parser = ArgumentParser(description='Enigma Vitural Box Unpacker')
+    parser = ArgumentParser(description='Enigma Virtual Box Unpacker')
+    parser.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem. Useful if you want the PE only',action='store_true',default=False)
     parser.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
     parser.add_argument('--legacy',help='Enable compatibility mode to work with older (6.x) EVB packages',action='store_true',default=False)
     parser.add_argument('--list',help='Don\'t extract the files and print the TOC only (surpresses other output)',action='store_true',default=False)
@@ -224,7 +319,7 @@ if __name__ == "__main__":
     args = parser.parse_args()    
     sys.stdout = sys.stderr
     # Redirect logs to stderr
-    file, output ,ignore_pe , legacy , list_files_only = args.file, args.output , args.ignore_pe , args.legacy , args.list
+    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
     if list_files_only:
         print = lambda *a,**k:None
     print('Enigma Virtual Box Unpacker v%s' % __version__)
@@ -232,22 +327,27 @@ if __name__ == "__main__":
     os.makedirs(output,exist_ok=True)    
     if ignore_pe:
         print('[!] Skipping PE restoration')
+    if ignore_fs:
+        print('[!] Skipping virtual FS extraction')
     if legacy:
         print('[!] Legacy mode enabled')
-    print('[-] Searching for magic')
-    magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
-    # I was having really weird issues with mmap on my machine, aleast in python,
-    # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
-    # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
-    # what is going on here
-    assert not magic is False, "Magic not found"    
+  
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
         if hdr == b'MZ' and not ignore_pe and not list_files_only:
             # Depack PEs
             restore_pe(file)
+        if ignore_fs:
+            sys.exit(0)
         # Dump EVB content
+        print('[-] Searching for magic')
+        magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
+        # I was having really weird issues with mmap on my machine, aleast in python,
+        # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
+        # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
+        # what is going on here
+        assert not magic is False, "Magic not found"          
         fd.seek(magic)
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
