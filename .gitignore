@@ -6,3 +6,6 @@ dist*
 *egg-info*
 tests
 .vscode
+example/PackerTestApp/*
+!example/PackerTestApp/PackerTestApp*
+example/PackerTestApp/*.user
