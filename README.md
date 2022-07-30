@@ -14,9 +14,9 @@ If PE restoration is desired, install [pefile](https://github.com/erocarrera/pef
 
 ### Usage
 
-    usage: __main__.py [-h] [--ignore-pe IGNORE_PE] [--legacy] [--list] file output
+    usage: __main__.py [-h] [--ignore-fs] [--ignore-pe IGNORE_PE] [--legacy] [--list] file output
 
-    Enigma Vitural Box Unpacker
+    Enigma Virtual Box Unpacker
 
     positional arguments:
       file                  File to be unpacked
@@ -24,6 +24,7 @@ If PE restoration is desired, install [pefile](https://github.com/erocarrera/pef
 
     options:
       -h, --help            show this help message and exit
+      --ignore-fs           Don't extract virtual filesystem. Useful if you want the PE only
       --ignore-pe IGNORE_PE
                             Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)
       --legacy              Enable compatibility mode to work with older (6.x) EVB packages
