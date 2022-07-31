@@ -345,10 +345,6 @@ if __name__ == "__main__":
         # Dump EVB content
         print('[-] Searching for magic')
         magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
-        # I was having really weird issues with mmap on my machine, aleast in python,
-        # FileIO will report `-8192` for `tell()` or `seek(0,1)` once mmap is attached to its `fileno`
-        # Alas, acquiring a handle seem to fix the issue. But it would be really nice if someone could tell me
-        # what is going on here
         assert not magic is False, "Magic not found"          
         fd.seek(magic)
         if legacy:
