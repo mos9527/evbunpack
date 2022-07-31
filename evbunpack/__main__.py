@@ -266,10 +266,12 @@ def restore_pe(file):
                 # The offset should not be referenced otherwise we would overwrite existing data
                 for header in pe.OPTIONAL_HEADER.DATA_DIRECTORY:
                     if pe.get_rva_from_offset(offset_) in range(header.VirtualAddress,header.VirtualAddress+header.Size):                        
-                        continue
-                    else:
-                        offset = offset_
+                        offset = 0
                         break
+                    else:
+                        offset = offset_                        
+            if offset > 0:
+                break
         assert offset > 0,"Cannot place Exceptions Directory!"
         section = pe.get_section_by_rva(pe.get_rva_from_offset(offset))
         print('[-] Found suitable section to place Exception Directory. Name=%s RVA=0x%x' % (section.Name.decode(),offset - section.PointerToRawData))
