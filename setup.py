@@ -11,7 +11,7 @@ setuptools.setup(
     description="Enigma Virtual Box 解包工具",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/greats3an/evbunpack",
+    url="https://github.com/mos9527/evbunpack",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
