@@ -265,7 +265,7 @@ def restore_pe(file):
                 # Check for references in the Optional Data Directory
                 # The offset should not be referenced otherwise we would overwrite existing data
                 for header in pe.OPTIONAL_HEADER.DATA_DIRECTORY:
-                    if offset_ in range(header.VirtualAddress,header.VirtualAddress+header.Size):                        
+                    if pe.get_rva_from_offset(offset_) in range(header.VirtualAddress,header.VirtualAddress+header.Size):                        
                         continue
                     else:
                         offset = offset_
