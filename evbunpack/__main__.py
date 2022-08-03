@@ -200,7 +200,7 @@ def process_file_node(fd,path,node):
                 desc='Write [size=0x%x, offset=0x%x]' % (ssize,offset)
             )
 
-def restore_pe(file):
+def restore_pe(file,output):
     # PEfile isn't the best for this job, but we'll get it done ;)
     # TODO : Recaluclate SizeOfImage to match the acutal file
     from pefile import PE,OPTIONAL_HEADER_MAGIC_PE_PLUS
@@ -310,7 +310,7 @@ def seek_to_magic(fd,magic):
     fd.seek(result)
     return result
 
-if __name__ == "__main__":
+def __main__():
     parser = ArgumentParser(description='Enigma Virtual Box Unpacker')
     parser.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem. Useful if you want the PE only',action='store_true',default=False)
     parser.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
@@ -322,6 +322,7 @@ if __name__ == "__main__":
     sys.stdout = sys.stderr
     # Redirect logs to stderr
     file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
+    global print
     if list_files_only:
         print = lambda *a,**k:None
     print('Enigma Virtual Box Unpacker v%s' % __version__)
@@ -339,7 +340,7 @@ if __name__ == "__main__":
         hdr = fd.read(2)        
         if hdr == b'MZ' and not ignore_pe and not list_files_only:
             # Depack PEs
-            restore_pe(file)
+            restore_pe(file,output)
         if ignore_fs:
             sys.exit(0)
         # Dump EVB content
@@ -394,3 +395,7 @@ if __name__ == "__main__":
             sys.exit(1)
         print('[!] Extraction complete',' ' * 20)
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    __main__()
