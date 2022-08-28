@@ -68,7 +68,7 @@ jobs:
     - name : Get Version
       id   : get_version
       run  : |        
-        version=$(echo ${{ github.event.head_commit.message }} | awk 'NR==1' | awk '{print $2}')
+        version=$(echo "${{ github.event.head_commit.message }}" | awk 'NR==1' | awk '{print $2}')
         echo "::set-output name=version::$version"
 
     - uses: actions/checkout@v3    
