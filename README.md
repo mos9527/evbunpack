@@ -2,18 +2,24 @@
 [Enigma Virtual Box](https://enigmaprotector.com/) unpacker
 
 ## Features
-Unpacks PE / external external packages made with [Enigma Vitrual Box](https://enigmaprotector.com/)
+- Restores PEs
+  - PEs with overlays can be recovered as well (EVB sometimes break them).
+  - TLS, Exceptions, and Import Tables are recovered in a way that resembles the original PE most closely.
+  - Produces nearly byte-perfect packages. You should be able to run like they were intended to!
+- Unpacks EVB's virtual file system w/wo compression (aplib)    
+  - This applies to both built-in content and external packages
+- Support for older/6.X and newest/9.X EVB packages
+## Installation
 
-Supports compressed archives and basically every recent version of EVB (tested 6.x & 9.x)
+  **For Windows Users** : Builds are available [here](https://github.com/mos9527/evbunpack/releases)
+  
+  Or get the latest version from PyPi:
+  
+      pip install evbunpack
 
-Can also restore the original executable for easier reverse engineering
+## Usage
 
-### Installation
-	pip install evbunpack
-
-### Usage
-
-    usage: __main__.py [-h] [--ignore-fs] [--ignore-pe IGNORE_PE] [--legacy] [--list] file output
+    usage: evbunpack [-h] [--ignore-fs] [--ignore-pe IGNORE_PE] [--legacy] [--list] file output
 
     Enigma Virtual Box Unpacker
 
@@ -30,8 +36,8 @@ Can also restore the original executable for easier reverse engineering
       --list                Don't extract the files and print the TOC only (surpresses other output)
 
 ### Examples
-	python -m evbunpack Lycoris_radiata.mys ../biman5_chs_moe
-	python -m evbunpack biman2.exe ./extract --legacy
+	evbunpack Lycoris_radiata.mys ../biman5_chs_moe
+	evbunpack biman2.exe ./extract --legacy
 ## TODO
 - ~~Restore original PEs~~
 - Registery configuration extraction

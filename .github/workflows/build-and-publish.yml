@@ -61,7 +61,7 @@ jobs:
 
   release:
     if: "contains(github.event.head_commit.message, 'Version')"
-    needs: ["pypi","build_windows"]
+    needs: ["build_windows"]
     runs-on: ubuntu-latest
 
     steps:
