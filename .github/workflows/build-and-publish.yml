@@ -61,13 +61,14 @@ jobs:
 
   release:
     if: "contains(github.event.head_commit.message, 'Version')"
+    needs: ["pypi","build_windows"]
     runs-on: ubuntu-latest
 
     steps:
     - name : Get Version
       id   : get_version
       run  : |        
-        echo "::set-output name=version::$`${{github.event.head_commit.message}} | awk 'NR==1' | awk '{print $2}'`"
+        echo "::set-output name=version::$`echo ${{github.event.head_commit.message}} | awk 'NR==1' | awk '{print $2}'`"
 
     - uses: actions/checkout@v3    
     - name: Create Release
@@ -78,7 +79,7 @@ jobs:
       with:
         tag_name: ${{ steps.get_version.outputs.version }}
         release_name: Version ${{ steps.get_version.outputs.version }}
-  
+
     - uses: actions/download-artifact@v3
       with:
         name: evbunpack.exe
