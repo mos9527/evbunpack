@@ -10,7 +10,6 @@ Can also restore the original executable for easier reverse engineering
 
 ### Installation
 	pip install evbunpack
-If PE restoration is desired, install [pefile](https://github.com/erocarrera/pefile) alongside this script
 
 ### Usage
 

@@ -111,10 +111,11 @@ def read_main_node(src):
     return unpack(EVB_NODE_MAIN, read_bytes_by_struct(src,EVB_NODE_MAIN))
 
 def pe_external_tree(fd):
-    # Before calling, make sure cursor is already 
+    # Before calling, make sure cursor is already at where the magic 
+    # is (`EVB\x00`)
     # Both PE and external packages work with this method    
     hdr = read_pack_header(fd)
-    assert hdr['signature'] == EVB_MAGIC, "Invalid singature"
+    assert hdr['signature'] == EVB_MAGIC, "Invalid signature"
     main_node = read_main_node(fd)    
     abs_offset = fd.tell() + main_node['size'] - 12 # offset from the head of the stream       
     fd.seek(-1,1)
@@ -141,7 +142,7 @@ def legacy_pe_tree(fd):
     # Older executables has their file table and content placed together
     # Courtesy of evb-extractor!    
     hdr = read_pack_header(fd)
-    assert hdr['signature'] == EVB_MAGIC, "Invalid singature"
+    assert hdr['signature'] == EVB_MAGIC, "Invalid signature"
     seek_origin = 0 
     while True:    
         seek_origin = fd.tell()
@@ -201,8 +202,7 @@ def process_file_node(fd,path,node):
             )
 
 def restore_pe(file,output):
-    # PEfile isn't the best for this job, but we'll get it done ;)
-    # TODO : Recaluclate SizeOfImage to match the acutal file
+    # PEfile isn't the best for this job, but we'll get it done ;)    
     from pefile import PE,OPTIONAL_HEADER_MAGIC_PE_PLUS
     print('[-] Loading PE...')
     pe = PE(file,fast_load=True)
@@ -334,7 +334,7 @@ def __main__():
         print('[!] Skipping virtual FS extraction')
     if legacy:
         print('[!] Legacy mode enabled')
-  
+
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
@@ -344,10 +344,10 @@ def __main__():
         if ignore_fs:
             sys.exit(0)
         # Dump EVB content
+        fd.seek(0)
         print('[-] Searching for magic')
-        magic = seek_to_magic(open(file,'rb'),EVB_MAGIC)
-        assert not magic is False, "Magic not found"          
-        fd.seek(magic)
+        magic = seek_to_magic(fd,EVB_MAGIC)
+        assert not magic is False, "Magic not found"                  
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
         else:
