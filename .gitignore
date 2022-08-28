@@ -1,8 +1,8 @@
 .vscode
 __pycache__
 %*
-build*
-dist*
+build/
+dist/
 *egg-info*
 tests
 .vscode

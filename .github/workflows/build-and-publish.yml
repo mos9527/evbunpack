@@ -1,0 +1,60 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
+
+name: Upload Python Package
+
+on:
+  release:
+    types: [created]
+
+  push:
+    branches:
+      - main
+      
+jobs:
+  pypi:
+    if: "contains(github.event.head_commit.message, 'Version')"
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install setuptools wheel twine
+        python setup.py install
+    - name: Build wheel and publish
+      env:
+        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+      run: |
+        python setup.py sdist bdist_wheel
+        twine upload dist/*
+
+
+  build_windows:    
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+          python-version: '3.7'
+          architecture: 'x86'
+    - name: Install Requirements
+      run: |          
+          python -m pip install --upgrade pip setuptools wheel twine
+          python -m pip install Pyinstaller
+          python setup.py install
+    - name: Build Windows executables
+      run: |          
+          pyinstaller -F -i NONE evbunpack/__main__.py --name evbunpack
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        path: |          
+          dist/evbunpack.exe
