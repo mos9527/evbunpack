@@ -111,8 +111,8 @@ def read_main_node(src):
     return unpack(EVB_NODE_MAIN, read_bytes_by_struct(src,EVB_NODE_MAIN))
 
 def pe_external_tree(fd):
-    # Before calling, make sure cursor is already at where the magic 
-    # is (`EVB\x00`)
+    # Before calling, make sure cursor is already at where
+    # the following bytes are b`EVB\x00`
     # Both PE and external packages work with this method    
     hdr = read_pack_header(fd)
     assert hdr['signature'] == EVB_MAGIC, "Invalid signature"

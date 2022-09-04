@@ -8,7 +8,7 @@ setuptools.setup(
     version=evbunpack.__version__,
     author=evbunpack.__author__,
     author_email="greats3an@gmail.com",
-    description="Enigma Virtual Box 解包工具",
+    description="Enigma Virtual Box Unpacker / 解包工具",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/mos9527/evbunpack",

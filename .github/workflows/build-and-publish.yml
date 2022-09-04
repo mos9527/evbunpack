@@ -53,6 +53,13 @@ jobs:
     - name: Build Windows executables
       run: |          
           pyinstaller -F -i NONE evbunpack/__main__.py --name evbunpack
+    - name: Run UPX
+      uses: crazy-max/ghaction-upx@v2
+      with:
+        version: latest
+        files: |
+          dist/evbunpack.exe
+        args: -fq          
     - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
