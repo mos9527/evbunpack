@@ -302,12 +302,11 @@ def restore_pe(file,output):
     write_bytes(BytesIO(new_file_data),open(pe_name,'wb+'),len(new_file_data),desc='Saving PE')
     print('[-] Original PE saved:',pe_name)
 
-def seek_to_magic(fd,magic):    
+def search_for_magic(fd,magic):    
     with mmap(fd.fileno(),length=0,access=ACCESS_READ) as mm:
         result = mm.find(magic)
         if result < 0: return False
-        print('[-] Found magic at',hex(result))    
-    fd.seek(result)
+        print('[-] Found magic at',hex(result))        
     return result
 
 def __main__():
@@ -346,8 +345,9 @@ def __main__():
         # Dump EVB content
         fd.seek(0)
         print('[-] Searching for magic')
-        magic = seek_to_magic(fd,EVB_MAGIC)
-        assert not magic is False, "Magic not found"                  
+        magic = search_for_magic(fd,EVB_MAGIC)
+        assert not magic is False, "Magic not found"
+    with open(file,'rb') as fd:               
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
         else:
