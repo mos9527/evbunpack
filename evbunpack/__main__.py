@@ -302,12 +302,15 @@ def restore_pe(file,output):
     write_bytes(BytesIO(new_file_data),open(pe_name,'wb+'),len(new_file_data),desc='Saving PE')
     print('[-] Original PE saved:',pe_name)
 
-def search_for_magic(fd,magic):    
-    with mmap(fd.fileno(),length=0,access=ACCESS_READ) as mm:
-        result = mm.find(magic)
-        if result < 0: return False
-        print('[-] Found magic at',hex(result))        
-    return result
+def search_for_magic(fd,size,magic):
+    CHUNKSIZE = 16 * 2**20  # 16MB
+    for i in range(0,size,CHUNKSIZE):
+        with mmap(fd.fileno(),offset=i,length=min(CHUNKSIZE,size - i),access=ACCESS_READ) as mm:
+            result = mm.find(magic)
+            if result > 0:
+                print('[-] Found magic at',hex(result))        
+                return result
+    return False
 
 def __main__():
     parser = ArgumentParser(description='Enigma Virtual Box Unpacker')
@@ -345,9 +348,11 @@ def __main__():
         # Dump EVB content
         fd.seek(0)
         print('[-] Searching for magic')
-        magic = search_for_magic(fd,EVB_MAGIC)
+        size = os.stat(file).st_size
+        magic = search_for_magic(fd,size,EVB_MAGIC)
         assert not magic is False, "Magic not found"
     with open(file,'rb') as fd:               
+        fd.seek(magic)
         if legacy:
             nodes = completed(legacy_pe_tree(fd))
         else:
@@ -387,8 +392,8 @@ def __main__():
                 last_stack[0] = last                
                 traverse_next_node(next(nodes))
         except StopIteration:                
-            print('[!] Magic found. But no filetable can be extracted.')
-            print('[!] Try enable / disabling --legacy option to see if that works.')      
+            print('[!] Filetable is either incomplete or unavailable.')
+            print('[!] Try enable / disabling the --legacy option.')
             sys.exit(1)
         except AssertionError as e:
             print('[!] While extracting package',e)
