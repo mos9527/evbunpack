@@ -307,7 +307,7 @@ def search_for_magic(fd,size,magic):
     for i in range(0,size,CHUNKSIZE):
         with mmap(fd.fileno(),offset=i,length=min(CHUNKSIZE,size - i),access=ACCESS_READ) as mm:
             result = mm.find(magic)
-            if result > 0:
+            if result >= 0:
                 print('[-] Found magic at',hex(result))        
                 return result
     return False
