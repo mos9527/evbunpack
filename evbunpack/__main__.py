@@ -85,11 +85,10 @@ def unpack(structure, buffer, *args, **extra):
 def read_named_node(src):    
     blkFilename = bytearray()                            
     p = src.read(2)
-    while p[0]!=0x00:                                
+    while (p[0]!=0 or p[1]!=0):
         blkFilename.extend(p)
-        p = src.read(2)       
-    src.seek(-2,1)     
-    block = blkFilename + src.read(3)
+        p = src.read(2)              
+    block = blkFilename + src.read(1)
     return unpack(EVB_NODE_NAMED, block, len(blkFilename),offset=src.tell())    
 
 def read_header_node(src):    
@@ -123,16 +122,16 @@ def pe_external_tree(fd):
     while True:
         try:
             header_node = read_header_node(fd)
-            named_node = read_named_node(fd)
+            named_node = read_named_node(fd)            
         except struct.error:
             return # Potential EOF exception
         if   named_node['type'] == NODE_TYPE_FILE:
             optional_node = read_optional_file_node(fd)                        
             optional_node['offset'] = abs_offset
-            abs_offset += optional_node['stored_size']
+            abs_offset += optional_node['stored_size']            
         elif named_node['type'] == NODE_TYPE_FOLDER:
             optional_node = {}
-            fd.seek(25,1)
+            fd.seek(25,1)            
         else:            
             return # assuming finished
         named_node['name'] = named_node['name'].decode('utf-16-le')        

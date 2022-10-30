@@ -50,8 +50,7 @@ EVB_NODE_MAIN = [
 ]
 
 EVB_NODE_NAMED = [    
-    ('%ds', 'name'), # args[0] - filename buffer length
-    ('2s', ''),
+    ('%ds', 'name'), # args[0] - filename buffer length    
     ('B', 'type'),
 ]
 
