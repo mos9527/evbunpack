@@ -322,7 +322,7 @@ def __main__():
     args = parser.parse_args()    
     sys.stdout = sys.stderr
     # Redirect logs to stderr
-    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
+    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, os.path.abspath(args.output) ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
     global print
     if list_files_only:
         print = lambda *a,**k:None
@@ -370,7 +370,11 @@ def __main__():
         def traverse_next_node(node,path_prefix=output,level=0):                        
             if level == 0 and node['type'] == NODE_TYPE_FOLDER:
                 node['name'] = FOLDER_ALTNAMES.get(node['name'],node['name'])                
-            path = os.path.join(path_prefix,node['name']).replace('\\','/')
+            else:
+                assert node['name'] != '', 'node name is empty!'
+            assert ('\\' not in node['name']) and ('/' not in node['name']) and (':' not in node['name']), f'Invalid character in node name: {node["name"]}'
+            assert node['name'] != '..' and node['name'] != '.', 'node name cannot be either . or ..'
+            path = os.path.normpath(os.path.join(path_prefix,node['name'])).replace('\\','/')
             sys.stderr.write('   ' + get_prefix(level) + ' ' + path + '\n')
             if node['type'] == NODE_TYPE_FILE:
                 if not list_files_only:
