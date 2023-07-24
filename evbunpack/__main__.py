@@ -119,7 +119,16 @@ def pe_external_tree(fd):
     abs_offset = fd.tell() + main_node['size'] - 12 # offset from the head of the stream       
     fd.seek(-1,1)
     yield main_node
+    file_struct = [main_node['objects_count']]
     while True:
+        current = file_struct.pop()
+        while current == 0:
+            if len(file_struct):
+                current = file_struct.pop()
+            else:
+                return
+        current -= 1
+        file_struct.append(current)
         try:
             header_node = read_header_node(fd)
             named_node = read_named_node(fd)            
@@ -132,6 +141,7 @@ def pe_external_tree(fd):
         elif named_node['type'] == NODE_TYPE_FOLDER:
             optional_node = {}
             fd.seek(25,1)            
+            file_struct.append(header_node['objects_count'])
         else:            
             return # assuming finished
         named_node['name'] = named_node['name'].decode('utf-16-le')        
@@ -381,7 +391,8 @@ def __main__():
                     process_file_node(fd,path,node)
             elif node['type'] == NODE_TYPE_FOLDER:
                 if not os.path.isdir(path):
-                    os.makedirs(path)
+                    if not list_files_only:
+                        os.makedirs(path)
                 for _ in range(0,node['objects_count']):
                     last = _ == node['objects_count'] - 1
                     last_stack[level + 1] = last
