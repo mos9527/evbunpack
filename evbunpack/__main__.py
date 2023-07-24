@@ -119,7 +119,16 @@ def pe_external_tree(fd):
     abs_offset = fd.tell() + main_node['size'] - 12 # offset from the head of the stream       
     fd.seek(-1,1)
     yield main_node
+    file_struct = [main_node['objects_count']]
     while True:
+        current = file_struct.pop()
+        while current == 0:
+            if len(file_struct):
+                current = file_struct.pop()
+            else:
+                return
+        current -= 1
+        file_struct.append(current)
         try:
             header_node = read_header_node(fd)
             named_node = read_named_node(fd)            
@@ -132,6 +141,7 @@ def pe_external_tree(fd):
         elif named_node['type'] == NODE_TYPE_FOLDER:
             optional_node = {}
             fd.seek(25,1)            
+            file_struct.append(header_node['objects_count'])
         else:            
             return # assuming finished
         named_node['name'] = named_node['name'].decode('utf-16-le')        
@@ -322,7 +332,7 @@ def __main__():
     args = parser.parse_args()    
     sys.stdout = sys.stderr
     # Redirect logs to stderr
-    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
+    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, os.path.abspath(args.output) ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
     global print
     if list_files_only:
         print = lambda *a,**k:None
@@ -370,14 +380,19 @@ def __main__():
         def traverse_next_node(node,path_prefix=output,level=0):                        
             if level == 0 and node['type'] == NODE_TYPE_FOLDER:
                 node['name'] = FOLDER_ALTNAMES.get(node['name'],node['name'])                
-            path = os.path.join(path_prefix,node['name']).replace('\\','/')
+            else:
+                assert node['name'] != '', 'node name is empty!'
+            assert ('\\' not in node['name']) and ('/' not in node['name']) and (':' not in node['name']), f'Invalid character in node name: {node["name"]}'
+            assert node['name'] != '..' and node['name'] != '.', 'node name cannot be either . or ..'
+            path = os.path.normpath(os.path.join(path_prefix,node['name'])).replace('\\','/')
             sys.stderr.write('   ' + get_prefix(level) + ' ' + path + '\n')
             if node['type'] == NODE_TYPE_FILE:
                 if not list_files_only:
                     process_file_node(fd,path,node)
             elif node['type'] == NODE_TYPE_FOLDER:
                 if not os.path.isdir(path):
-                    os.makedirs(path)
+                    if not list_files_only:
+                        os.makedirs(path)
                 for _ in range(0,node['objects_count']):
                     last = _ == node['objects_count'] - 1
                     last_stack[level + 1] = last
