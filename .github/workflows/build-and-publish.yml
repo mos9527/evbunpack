@@ -33,8 +33,7 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
       run: |
         python setup.py sdist bdist_wheel
-        twine upload dist/*
-
+        twine upload dist/*.whl dist/*.gz
 
   build_windows:    
     runs-on: windows-latest
