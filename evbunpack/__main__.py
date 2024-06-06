@@ -88,7 +88,9 @@ def pe_external_tree(fd):
     abs_offset = fd.tell() + main_node['size'] - 12 # offset from the head of the stream       
     fd.seek(-1,1)
     yield main_node
-    while True:
+    max_object_count = 0
+    current_object_count = 0
+    while True:        
         try:
             header_node = read_header_node(fd)
             named_node = read_named_node(fd)            
@@ -97,14 +99,19 @@ def pe_external_tree(fd):
         if   named_node['type'] == NODE_TYPE_FILE:
             optional_node = read_optional_file_node(fd)                        
             optional_node['offset'] = abs_offset
-            abs_offset += optional_node['stored_size']            
+            abs_offset += optional_node['stored_size']      
+            current_object_count += 1      
         elif named_node['type'] == NODE_TYPE_FOLDER:
             optional_node = {}
             fd.seek(25,1)            
+            max_object_count += header_node['objects_count']
+            current_object_count += 1
         else:            
             return # assuming finished
         named_node['name'] = named_node['name'].decode('utf-16-le')        
         yield {**header_node,**named_node,**optional_node}
+        if current_object_count > max_object_count  and max_object_count > 0:
+            return        
 
 def legacy_pe_tree(fd):
     # Older executables has their file table and content placed together
@@ -112,6 +119,8 @@ def legacy_pe_tree(fd):
     hdr = read_pack_header(fd)
     assert hdr['signature'] == EVB_MAGIC, "Invalid signature"
     seek_origin = 0 
+    max_object_count = 0
+    current_object_count = 0
     while True:    
         seek_origin = fd.tell()
         try:
@@ -124,9 +133,12 @@ def legacy_pe_tree(fd):
             optional_node = read_optional_legacy_pe_file_node(fd)                  
             optional_node['offset'] = fd.tell()
             fd.seek(optional_node['stored_size'],1)
+            current_object_count += 1
         elif named_node['type'] == NODE_TYPE_FOLDER:
             optional_node = {}
             fd.seek(seek_origin + header_node['size'] + 4)
+            max_object_count += header_node['objects_count']
+            current_object_count += 1
         elif named_node['type'] == NODE_TYPE_MAIN:        
             optional_node = {}    
             fd.seek(seek_origin + header_node['size'] + 4)            
@@ -134,6 +146,8 @@ def legacy_pe_tree(fd):
             return # assuming finished
         named_node['name'] = named_node['name'].decode('utf-16-le')        
         yield {**header_node,**named_node,**optional_node}       
+        if current_object_count > max_object_count and max_object_count > 0:
+            return        
 
 def completed(generator):
     # Complete building the tree before we'd read the file
