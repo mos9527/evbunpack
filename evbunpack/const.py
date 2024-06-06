@@ -16,17 +16,87 @@ PE64_EXCEPTION = [
     ('I','UNWIND_INFO'),    
 ]
 
-EVB_ENIGMA1_HEADER = [
-    ('%ds',''), # Offset to import address
-    ('I','TLS_CALLBACK_RVA'),
-    ('I','IMPORT_ADDRESS'),
-    ('I','IMPORT_SIZE'),
-    ('I','RELOC_ADDRESS'),
-    ('I','RELOC_SIZE'),
-    ('I','TLS_ADDRESS'),
-    ('I','TLS_SIZE'),    
-]
+class EVB_ENIGMA1_HEADER:
+    x64_NEW = [
+        # TLS (first 32 bytes of it if there is any)
+        ('32s', 'TLS'),
+        # Padding Begin
+        ('Q', ''), ('Q', ''),
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), 
+        # Padding End   
+        ('Q', 'UNK_1'),
+        ('Q', ''), ('Q', ''),
+        ('Q', ''),
+        ('I','IMPORT_ADDRESS'),
+        ('I','IMPORT_SIZE'),
+        ('I','RELOC_ADDRESS'),
+        ('I','RELOC_SIZE'),
+        ('I','TLS_ADDRESS'),
+        ('I','TLS_SIZE'),    
+    ]
 
+    x64_OLD = [
+        # TLS (first 32 bytes of it if there is any)
+        ('32s', 'TLS'),
+        # Padding Begin
+        ('Q', ''), ('Q', ''),
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), 
+        # Padding End   
+        ('Q', 'UNK_1'),
+        ('Q', ''),
+        ('I','IMPORT_ADDRESS'),
+        ('I','IMPORT_SIZE'),
+        ('I','RELOC_ADDRESS'),
+        ('I','RELOC_SIZE'),
+        ('I','TLS_ADDRESS'),
+        ('I','TLS_SIZE'),    
+    ]
+
+    x86_NEW = [
+        # TLS (first 16 bytes of it if there is any)
+        ('16s', 'TLS'),
+        # Padding Begin
+        ('Q', ''), ('Q', ''),
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), ('Q', ''), 
+        # Padding End   
+        ('Q', 'UNK_1'), ('Q', 'UNK_2'),
+        ('I', 'UNK_3'),
+        ('I','IMPORT_ADDRESS'),
+        ('I','IMPORT_SIZE'),
+        ('I','RELOC_ADDRESS'),
+        ('I','RELOC_SIZE'),
+        ('I','TLS_ADDRESS'),
+        ('I','TLS_SIZE'),
+    ]
+
+    x86_OLD = [
+        # TLS (first 16 bytes of it if there is any)
+        ('16s', 'TLS'),
+        # Padding Begin
+        ('Q', ''), ('Q', ''),
+        ('Q', ''), ('Q', ''), 
+        ('Q', ''), ('Q', ''), 
+        # Padding End   
+        ('Q', 'UNK_1'),
+        ('I', 'UNK_3'),
+        ('I','IMPORT_ADDRESS'),
+        ('I','IMPORT_SIZE'),
+        ('I','RELOC_ADDRESS'),
+        ('I','RELOC_SIZE'),
+        ('I','TLS_ADDRESS'),
+        ('I','TLS_SIZE'), 
+    ]
+    @staticmethod
+    def get_struct(arch_64 : bool, legacy_pe : bool):
+        if arch_64:
+            return EVB_ENIGMA1_HEADER.x64_OLD if legacy_pe else EVB_ENIGMA1_HEADER.x64_NEW
+        else:
+            return EVB_ENIGMA1_HEADER.x64_OLD if legacy_pe else EVB_ENIGMA1_HEADER.x86_NEW
 EVB_PACK_HEADER = [
     ('4s', 'signature'),   # Would always be ('EVB\x00') if valid
     ('60s',''),    

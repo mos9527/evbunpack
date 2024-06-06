@@ -1,6 +1,7 @@
 // PackerTestApp.cpp : Generic testing PE for packers
 // by mos9527, 2022
 /* References:
+	https://learn.microsoft.com/en-us/cpp/parallel/multithreading-with-c-and-win32
 	https://bidouillesecurity.com/tutorial-writing-a-pe-packer-part-1/
 	https://github.com/jeremybeaume/packer-tutorial
 */
@@ -8,8 +9,32 @@
 #include <windows.h>
 #include <Psapi.h>
 #include <stdio.h>
+
+#define EXIT_OK 0
+#define EXIT_INVALID_FS 1
+#define EXIT_INVALID_TLS 2
+#define EXIT_INVALID_OVERLAY 3
+const char* MAGIC = "El Psy Kongroo.";
+
+__declspec(thread) int tls_value = 0;
+int WINAPI thread_job(int no) {
+	printf("TLS run #%d: tls_value before thread job:%d\n", no, tls_value);
+	if (tls_value != 0) {
+		printf(">>> Bad TLS initial value. Early out.\n");
+		ExitProcess(EXIT_INVALID_TLS);
+	}
+	tls_value = no;
+	printf("TLS run #%d: tls_value after thread job:%d\n", no, tls_value);
+	return 0;
+}
 int main()
 {	
+	printf("TLS - Thread Local Storage\n");
+	for (int i = 1; i <= 2; i++) {
+		HANDLE thread = _beginthread(thread_job, 0, i);
+		WaitForSingleObject(thread, INFINITE);
+	}
+	printf(">>> TLS Checks OK.\n");
 	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	char BUFFER[1024] = { 0 };
 	DWORD bytesRead;
@@ -20,10 +45,18 @@ int main()
 		);
 		if (file == INVALID_HANDLE_VALUE) {
 			printf("Cannot open file for reading!\n");
+			ExitProcess(EXIT_INVALID_FS);
 		}
 		else {
-			if (ReadFile(file, BUFFER, 1024, &bytesRead, NULL))
-				printf("Size	%d Bytes\nContent	%s\n",bytesRead,BUFFER);
+			if (ReadFile(file, BUFFER, 1024, &bytesRead, NULL)) {				
+				if (memcmp(BUFFER, MAGIC, strlen(MAGIC)) != 0) {
+					printf(">>> Invalid README.txt content!\n");
+					ExitProcess(EXIT_INVALID_FS);
+				}
+				else {
+					printf(">>> README.txt content OK.\n");
+				}
+			}
 		}
 		printf("PE Modification - Sections\n");
 		/** Parse header **/
@@ -55,15 +88,20 @@ int main()
 			else {
 				if (SetFilePointer(file, LOWORD(start_of_overlay),0 , FILE_BEGIN)) {
 					if (ReadFile(file, BUFFER, 1024, &bytesRead, NULL))
-						printf("Size	%d Bytes\nContent	%s\n", bytesRead, BUFFER);
+						if (memcmp(BUFFER, MAGIC, strlen(MAGIC)) != 0) {
+							printf(">>> Invalid Overlay content!\n");
+							ExitProcess(EXIT_INVALID_OVERLAY);
+						}
+						else {
+							printf(">>> Overlay content OK. %s\n", BUFFER);
+						}
 				}
 			}
 		}
 		else {
 			printf("Cannot acquire filename for self!\n");
-		}
-		printf("Press any key to exit...");
-		ReadConsoleA(GetStdHandle(STD_INPUT_HANDLE), BUFFER, 1, &bytesRead, NULL);
+		}		
 	}
-	return 0;		
+	
+return 0;		
 }

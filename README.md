@@ -8,7 +8,7 @@
   - Produces nearly byte-perfect packages. You should be able to run like they were intended to!
 - Unpacks EVB's virtual file system w/wo compression (aplib)    
   - This applies to both built-in content and external packages
-- Support for older/6.X and newest/10.X EVB packages
+- Support for older/6.X and newer/10.X EVB packages
 ## Installation
 
   **For Windows Users** : Builds are available [here](https://github.com/mos9527/evbunpack/releases)

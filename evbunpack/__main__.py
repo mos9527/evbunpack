@@ -1,63 +1,32 @@
 #-*- coding: utf-8 -*-
 # Copy
-import struct,os,array,time,math,sys
+from itertools import dropwhile
+import struct,os,array,sys, logging
 from argparse import ArgumentParser
 from mmap import mmap,ACCESS_READ
 from io import BytesIO
 from evbunpack.aplib import decompress
 from evbunpack.const import *
 from evbunpack import __version__
+logger = logging.getLogger('evbunpack')
 
-ORIGINAL_PE_SUFFIX = '_original.exe'
 FOLDER_ALTNAMES = {
     '%DEFAULT FOLDER%' : ''
 }
-
-class Progress:
-    tick_rate = 0.1 # in seconds
-    _phases = (' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')        
-    _base  = lambda x:int(math.log2(x) // 10 if x > 0 else 0)
-    _hrs   = lambda x:'%.2f' % (x/2**(10*Progress._base(x))) + ('B', 'kB', 'MB', 'GB', 'TB')[Progress._base(x)]
-    last = ''        
-    def __init__(self) -> None:
-        self._max = 0
-        self._val = 0
-        self._tick = time.time()
-    def report(self,message,now,total):
-        if self._max != total:
-            self._max = total
-            self._val = now
-            self._tick = time.time()
-        dt = time.time() - self._tick
-        if (dt < self.tick_rate): return
-        dy = now - self._val
-        self._tick = time.time()
-        self._val = now
-        r = dy / dt if dt > 0 else dy
-        s = ' '.join(['[%s]'%self._phases[len(self._phases) * now//total],message,Progress._hrs(now),'/',Progress._hrs(total),Progress._hrs(r)+'/s'])
-        print(s,' ' * max(len(self.last) - len(s),0),sep='',end='\r')
-        self.last = s
-
-    def clear(self):
-        print(' ' * len(self.last),end='\r')
-
-Progress.instance = Progress()
-def report_extraction_progress(message,now,total):
-    return Progress.instance.report(message,now,total)
 
 def write_bytes(fd,out_fd,size,chunk_sizes=None,chunk_process=None,default_chunksize=65536,desc='Extracting...'):
     bytes_read  = 0
     bytes_wrote = 0
     inital_offset = fd.tell()
     while bytes_read < size:
-        report_extraction_progress(desc,bytes_read,size)
+        sys.stderr.write('%s: total=%8xh read=%8xh\r' % (desc,size,bytes_read))
         chunk_size = next(chunk_sizes) if chunk_sizes else default_chunksize        
         size_to_read = min(chunk_size,size - (fd.tell() - inital_offset))
         chunk = fd.read(size_to_read)
         bytes_read += len(chunk)
         chunk = chunk if not chunk_process else chunk_process(chunk)                
         bytes_wrote += out_fd.write(chunk)
-    Progress.instance.clear()
+    sys.stderr.write('\n')
     return bytes_wrote
 
 def get_size_by_struct(struct_):
@@ -190,40 +159,44 @@ def process_file_node(fd,path,node):
                 size=ssize - chunks_blk['size'],
                 chunk_sizes=arrChunkData,
                 chunk_process=decompress,
-                desc='Decompress [offset=0x%x, offsetBlk=0x%x]' % (fd.tell(),chunks_blk['size'])
+                desc='Decompressing File [offset=0x%x, offsetBlk=0x%x]' % (fd.tell(),chunks_blk['size'])
             )
             assert wsize == rsize,"Incorrect size"
         else:            
             write_bytes(
                 fd,output,
                 size=ssize,
-                desc='Write [size=0x%x, offset=0x%x]' % (ssize,offset)
+                desc='Writing File [size=0x%x, offset=0x%x]' % (ssize,offset)
             )
 
-def restore_pe(file,output):
-    # PEfile isn't the best for this job, but we'll get it done ;)    
+def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
+    warnings_issued = 0
+
     from pefile import PE,OPTIONAL_HEADER_MAGIC_PE_PLUS
-    print('[-] Loading PE...')
-    pe = PE(file,fast_load=True)
-    PE64 = pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS
+    logger.debug('Loading PE...')
+    pe = PE(input_file,fast_load=True)
+    arch_64 = pe.PE_TYPE == OPTIONAL_HEADER_MAGIC_PE_PLUS
     pe.__data__ = bytearray(pe.__data__) # This allows us to apply slicing on the PE data
     # Helpers    
     find_section = lambda name:next(filter(lambda x:name in x.Name,pe.sections))
     find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))    
+    search_pattern_in_sections = lambda pattern:next(dropwhile(lambda x: x[1] == -1, ((section, pe.__data__.find(pattern,section.PointerToRawData, section.PointerToRawData + section.SizeOfRawData)) for section in pe.sections)))
     # Data
     enigma1 = pe.__data__[find_section(b'.enigma1').PointerToRawData:]
-    hdr = unpack(EVB_ENIGMA1_HEADER,enigma1,104 if PE64 else 76)
+    hdr = unpack(EVB_ENIGMA1_HEADER.get_struct(arch_64, legcay_pe), enigma1)
     # Restore section with built-in offsets. All these ADDRESSes are VAs
     find_data_directory('IMPORT').VirtualAddress = hdr['IMPORT_ADDRESS']
     find_data_directory('IMPORT').Size = hdr['IMPORT_SIZE']
     find_data_directory('RELOC').VirtualAddress = hdr['RELOC_ADDRESS']
     find_data_directory('RELOC').Size = hdr['RELOC_SIZE']
-    print('[-] Rebuilding Exception directory...')
+    logger.debug('Import -> VA=0x%x Size=0x%x' % (hdr['IMPORT_ADDRESS'],hdr['IMPORT_SIZE']))
+    logger.debug('Reloc  -> VA=0x%x Size=0x%x' % (hdr['RELOC_ADDRESS'],hdr['RELOC_SIZE']))
+    logger.debug('Rebuilding Exception directory...')
     # Rebuild the exception directory
     exception_dir = find_data_directory('EXCEPTION')    
     exception_raw_ptr = pe.get_offset_from_rva(exception_dir.VirtualAddress)
     exception_data = pe.__data__[exception_raw_ptr:exception_raw_ptr + exception_dir.Size]    
-    exception_struct = PE64_EXCEPTION if PE64 else PE_EXCEPTION
+    exception_struct = PE64_EXCEPTION if arch_64 else PE_EXCEPTION
     exception_end = 0
     for i in range(0,exception_dir.Size,get_size_by_struct(exception_struct)):
         block = unpack(exception_struct,exception_data[i:])
@@ -232,17 +205,6 @@ def restore_pe(file,output):
         if b'.enigma' in block['section'].Name: 
             break
     exception_data = exception_data[:exception_end]
-    # Prepare partial TLS data for searching
-    tls_dir = find_data_directory('TLS')    
-    tls_raw_ptr = pe.get_offset_from_rva(tls_dir.VirtualAddress)
-    tls_data = bytearray(pe.__data__[tls_raw_ptr:tls_raw_ptr + tls_dir.Size])    
-    original_callback = hdr['TLS_CALLBACK_RVA'] + pe.OPTIONAL_HEADER.ImageBase
-    original_callback = struct.pack('<' + ('Q' if PE64 else 'I'),original_callback)
-    if (PE64): 
-        tls_data += original_callback       # AddressOfCallBacks
-    else:
-        tls_data[12:16] = original_callback # AddressOfCallBacks
-        tls_data = tls_data[:16]
     # Destory .enigma* sections
     pe.__data__ = pe.__data__[:find_section(b'.enigma1').PointerToRawData] + pe.__data__[find_section(b'.enigma2').PointerToRawData + find_section(b'.enigma2').SizeOfRawData:]
     # If original program has a overlay, this will perserve it. Otherwise it's okay to remove them anyway.
@@ -251,55 +213,50 @@ def restore_pe(file,output):
     pe.FILE_HEADER.NumberOfSections -= 2    
     # NOTE: .enigma1 contains the VFS, as well as some Optional PE Header info as descrbied above
     # NOTE: .enigma2 is a aplib compressed loader DLL. You can decompress it with aplib provided in this repo  
+    # Append the exception section and assign the pointers
     if (exception_data):
         # Reassign the RVA & sizes    
-        print('[-] Rebuilt Exception directory. Size=0x%x' % len(exception_data))
+        logger.debug('Rebuilt Exception directory. Size=0x%x' % len(exception_data))
         # Find where this could be placed at...since EVB clears the original exception directory listings
         # PEs with overlays won't work at all if EVB packed them.
         # We must remove the sections and do NOT append anything new
-        offset = 0
-        for section in pe.sections:
-            offset_ = pe.__data__.find(b'\x00' * len(exception_data),section.PointerToRawData, section.PointerToRawData + section.SizeOfRawData)
-            if offset_ > 0: 
-                # Check for references in the Optional Data Directory
-                # The offset should not be referenced otherwise we would overwrite existing data
-                for header in pe.OPTIONAL_HEADER.DATA_DIRECTORY:
-                    if pe.get_rva_from_offset(offset_) in range(header.VirtualAddress,header.VirtualAddress+header.Size):                        
-                        offset = 0
-                        break
-                    else:
-                        offset = offset_                        
-            if offset > 0:
-                break
-        assert offset > 0,"Cannot place Exceptions Directory!"
-        section = pe.get_section_by_rva(pe.get_rva_from_offset(offset))
-        print('[-] Found suitable section to place Exception Directory. Name=%s RVA=0x%x' % (section.Name.decode(),offset - section.PointerToRawData))
-        pe.__data__[offset:offset+len(exception_data)] = exception_data
-        section.SizeOfRawData = max(section.SizeOfRawData,len(exception_data))
-        exception_dir.VirtualAddress = pe.get_rva_from_offset(offset)
-        exception_dir.Size = len(exception_data)
+        try:
+            section, offset = search_pattern_in_sections(b'\x00' * len(exception_data))
+            logger.debug('Found suitable section to place Exception Directory. Name=%s RVA=0x%x' % (section.Name.decode(),offset - section.PointerToRawData))
+            pe.__data__[offset:offset+len(exception_data)] = exception_data
+            section.SizeOfRawData = max(section.SizeOfRawData,len(exception_data))
+            exception_dir.VirtualAddress = pe.get_rva_from_offset(offset)
+            exception_dir.Size = len(exception_data)
+        except StopIteration as e:
+            logger.warning('Cannot place Exception Directory. It\'s highly likely that the unpacked PE won\'t work.')
+            warnings_issued += 1
+            exception_dir.VirtualAddress = 0
+            exception_dir.Size = 0
     else:
-        print('[-] Original program does not contain Exception Directory.')
+        logger.debug('Original program does not contain Exception Directory.')
         exception_dir.VirtualAddress = 0
         exception_dir.Size = 0
-    offset = pe.__data__.find(tls_data)
-    # Append the exception section and assign the pointers
-    # Serach for TLS in memory map since it's not removed.
+    # Serach for TLS in memory map since it's copied to the header
     tls_dir = find_data_directory('TLS')
-    if (offset > 0):
-        print('[-] TLS Directory found. Offset=0x%x' % offset)
+    try:
+        tls_data = hdr['TLS']
+        section, offset = search_pattern_in_sections(tls_data[:12])
+        logger.debug('TLS Directory found. Offset=0x%x Section=%s' % (offset,section.Name.decode()))
         tls_dir.VirtualAddress = pe.get_rva_from_offset(offset)
-        tls_dir.Size = 40 if PE64 else 24
-    else:
-        print('[-] Original program does not utilize TLS.')
+        tls_dir.Size = 40 if arch_64 else 24
+    except StopIteration as e:
+        logger.warning('TLS Directory not found. Original program may not have TLS data or the packer header is incorrectly parsed.')
+        warnings_issued += 1
         tls_dir.VirtualAddress = 0
         tls_dir.Size = 0
     # Write to new file
-    pe_name = os.path.basename(file)[:-4] + ORIGINAL_PE_SUFFIX
-    pe_name = os.path.join(output,pe_name).replace('\\','/')    
     new_file_data = pe.write()
-    write_bytes(BytesIO(new_file_data),open(pe_name,'wb+'),len(new_file_data),desc='Saving PE')
-    print('[-] Original PE saved:',pe_name)
+    with open(output_file,'wb+') as f:
+        write_bytes(BytesIO(new_file_data),f,len(new_file_data),desc='Saving PE')
+    logger.info('Original PE saved: %s' % output_file)
+    if warnings_issued:
+        logger.warning('There were %d warning(s) issued during the restoration process.' % warnings_issued)
+        logger.warning('Please try toggling the --legacy-pe flag if the unpacked executable appears corrupt.')        
 
 def search_for_magic(fd,size,magic):
     CHUNKSIZE = 16 * 2**20  # 16MB
@@ -307,99 +264,102 @@ def search_for_magic(fd,size,magic):
         with mmap(fd.fileno(),offset=i,length=min(CHUNKSIZE,size - i),access=ACCESS_READ) as mm:
             result = mm.find(magic)
             if result >= 0:
-                print('[-] Found magic at',hex(result))        
+                logger.debug('Found magic at %x' % result)
                 return result
-    return False
+    return -1
 
-def __main__():
-    parser = ArgumentParser(description='Enigma Virtual Box Unpacker')
-    parser.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem. Useful if you want the PE only',action='store_true',default=False)
-    parser.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
-    parser.add_argument('--legacy',help='Enable compatibility mode to work with older (6.x) EVB packages',action='store_true',default=False)
-    parser.add_argument('--list',help='Don\'t extract the files and print the TOC only (surpresses other output)',action='store_true',default=False)
-    parser.add_argument('file', help='File to be unpacked')
-    parser.add_argument('output', help='Extract destination directory')
-    args = parser.parse_args()    
-    sys.stdout = sys.stderr
-    # Redirect logs to stderr
-    file, output ,ignore_fs, ignore_pe,legacy , list_files_only = args.file, args.output ,args.ignore_fs, args.ignore_pe , args.legacy , args.list
-    global print
-    if list_files_only:
-        print = lambda *a,**k:None
-    print('Enigma Virtual Box Unpacker v%s' % __version__)
+def unpack_files(file : str, out_dir : str, legacy_fs : bool, listing_only : bool):
+    size = os.stat(file).st_size
+    magic = search_for_magic(fd,size,EVB_MAGIC)
+    assert magic >= 0, "EVB filesystem magic not found. Cannot proceed."
+    with open(file,'rb') as fd:               
+        fd.seek(magic)
+        if legacy_fs:
+            nodes = completed(legacy_pe_tree(fd))
+        else:
+            nodes = completed(pe_external_tree(fd))
+        depths = dict()
+        def get_prefix(level):
+            prefix = '└───' if depths[level] else '├───'
+            for _ in range(level,0,-1):
+                if _ != 0: prefix = '│   ' if not depths[_ - 1] else '    ' +prefix
+            return prefix
+        def traverse_next_node(node,pfx=out_dir,depth=0):                        
+            if node['type'] == NODE_TYPE_FOLDER:
+                node['name'] = FOLDER_ALTNAMES.get(node['name'],node['name'])                
+            assert ('\\' not in node['name']) and ('/' not in node['name']) and (':' not in node['name']), f'Invalid character in node name: {node["name"]}'
+            assert node['name'] != '..' and node['name'] != '.', 'node name cannot be either . or ..'
+            path = os.path.normpath(os.path.join(pfx,node['name'])).replace('\\','/')
+            sys.stderr.write('   ' + get_prefix(depth) + ' ' + path + '\n')
+            if node['type'] == NODE_TYPE_FILE and not listing_only:
+                process_file_node(fd,path,node)
+            elif node['type'] == NODE_TYPE_FOLDER:
+                if not os.path.isdir(path) and not listing_only:
+                    os.makedirs(path)
+                for _ in range(0,node['objects_count']):
+                    last = _ == node['objects_count'] - 1
+                    depths[depth + 1] = last
+                    traverse_next_node(next(nodes),pfx=path,depth=depth + 1) 
+        try:
+            main_node = next(nodes)
+            for _ in range(main_node['objects_count']):     
+                traverse_next_node(next(nodes))
+        except StopIteration:                
+            logger.error('The filetable appears to be corrupted. Cannot proceed any further.')
+            logger.error('Please try toggling the --legacy-fs flag to solve this issue.')
+            return
+        except AssertionError as e:
+            logger.error('While extracting package %s' % e)
+            return
+        logger.info('Extraction complete')
+        return
+    
+def main(file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = False, ignore_pe: bool  = False, legacy: bool = False, list_files_only: bool = False):
+    logger.info('Enigma Virtual Box Unpacker v%s' % __version__)
     # Preparing base path
-    os.makedirs(output,exist_ok=True)    
+    os.makedirs(out_dir,exist_ok=True)    
     if ignore_pe:
-        print('[!] Skipping PE restoration')
+        logger.warning('Skipping PE restoration')
     if ignore_fs:
-        print('[!] Skipping virtual FS extraction')
+        logger.warning('Skipping virtual FS extraction')
     if legacy:
-        print('[!] Legacy mode enabled')
+        logger.warning('Legacy mode override enabled')
 
     with open(file,'rb') as fd:
         # Locate magic
         hdr = fd.read(2)        
         if hdr == b'MZ' and not ignore_pe and not list_files_only:
             # Depack PEs
-            restore_pe(file,output)
+            if not out_pe:
+                out_pe = os.path.join(out_dir, os.path.basename(file))
+                logger.warning('Using default executable save path: %s' % out_pe)
+            os.makedirs(os.path.dirname(out_pe), exist_ok=True)
+            restore_pe(file,out_pe)
         if ignore_fs:
-            sys.exit(0)
+            return 0
         # Dump EVB content
         fd.seek(0)
-        print('[-] Searching for magic')
+        logger.debug('Searching for magic')
         size = os.stat(file).st_size
         magic = search_for_magic(fd,size,EVB_MAGIC)
         assert not magic is False, "Magic not found"
-    with open(file,'rb') as fd:               
-        fd.seek(magic)
-        if legacy:
-            nodes = completed(legacy_pe_tree(fd))
-        else:
-            nodes = completed(pe_external_tree(fd))
-        # Traversing nodes
-        last_stack = dict()
-        def get_prefix(level):
-            prefix = '└───' if last_stack[level] else '├───'
-            for _ in range(level,0,-1):
-                if _ != 0:
-                    if not last_stack[_ - 1]:
-                        prefix = '│   '+prefix
-                    else:
-                        prefix = '    '+prefix
-            return prefix
-        def traverse_next_node(node,path_prefix=output,level=0):                        
-            if level == 0 and node['type'] == NODE_TYPE_FOLDER:
-                node['name'] = FOLDER_ALTNAMES.get(node['name'],node['name'])                
-            path = os.path.join(path_prefix,node['name']).replace('\\','/')
-            sys.stderr.write('   ' + get_prefix(level) + ' ' + path + '\n')
-            if node['type'] == NODE_TYPE_FILE:
-                if not list_files_only:
-                    process_file_node(fd,path,node)
-            elif node['type'] == NODE_TYPE_FOLDER:
-                if not os.path.isdir(path):
-                    os.makedirs(path)
-                for _ in range(0,node['objects_count']):
-                    last = _ == node['objects_count'] - 1
-                    last_stack[level + 1] = last
-                    traverse_next_node(next(nodes),path_prefix=path,level=level + 1)        
-        try:            
-            main_node = next(nodes)
-            sys.stderr.write('[Virtual Box Filetable]\n')
-            sys.stderr.flush()
-            for _ in range(main_node['objects_count']):
-                last = _ == main_node['objects_count'] - 1
-                last_stack[0] = last                
-                traverse_next_node(next(nodes))
-        except StopIteration:                
-            print('[!] Filetable is either incomplete or unavailable.')
-            print('[!] Try enable / disabling the --legacy option.')
-            sys.exit(1)
-        except AssertionError as e:
-            print('[!] While extracting package',e)
-            sys.exit(1)
-        print('[!] Extraction complete',' ' * 20)
-        sys.exit(0)
 
+def __main__():
+    parser = ArgumentParser(description='Enigma Virtual Box Unpacker')
+    group = parser.add_argument_group('Flags')
+    group.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem. Useful if you want the PE only',action='store_true',default=False)
+    group.add_argument('--ignore-pe',help='Treat PE files like external packages and thereby does not recover the original executable (for usage without pefile)',default=False)
+    group.add_argument('--legacy',help='Enable compatibility mode to work with older (6.x) EVB packages',action='store_true',default=False)
+    group.add_argument('--list',help='Don\'t extract the files and print the TOC only (surpresses other output)',action='store_true',default=False)
+    group.add_argument('--log-level',help='Set log level',default='INFO',choices=['DEBUG','INFO','WARNING','ERROR','CRITICAL'])
+    group = parser.add_argument_group('Output')
+    group.add_argument('--out-dir', help='Output folder',default='.')
+    group.add_argument('--out-pe', help='(If PE file is recovered) Where the unpacked exe is saved. Leave empty to save it in the output folder.',default='')
+    group = parser.add_argument_group('Input')
+    group.add_argument('file', help='File to be unpacked')
+    args = parser.parse_args()    
+    logging.basicConfig(level=args.log_level)
+    sys.exit(main(args.file,args.out_dir,args.out_pe,args.ignore_fs,args.ignore_pe,args.legacy,args.list))
 
 if __name__ == "__main__":
     __main__()
