@@ -1,0 +1,16 @@
+name: Tests
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  Test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+      - name: Install dependencies
+        run: |
+          pip install -U pytest
+          python setup.py install
+      - name: Run tests
+        run: |
+          pytest

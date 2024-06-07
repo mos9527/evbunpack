@@ -1,76 +1,45 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
-
-name: Upload Python Package
+name: Publish
 
 on:
-  release:
-    types: [created]
-
-  push:
-    branches:
-      - main
-      
+  workflow_run:
+    workflows: Test
+    types: completed
+     
 jobs:
   pypi:
     if: "contains(github.event.head_commit.message, 'Version')"
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.x'
+        python-version: '3.10'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install setuptools wheel twine
+        python -m pip install setuptools wheel build
+        python -m pip install Pyinstaller
         python setup.py install
-    - name: Build wheel and publish
-      env:
-        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        python setup.py sdist bdist_wheel
-        twine upload dist/*.whl dist/*.gz
-
-  build_windows:    
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
+    - name: Build package
+      run: python -m build --no-isolation
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
       with:
-          python-version: '3.7'
-          architecture: 'x86'
-    - name: Install Requirements
-      run: |          
-          python -m pip install --upgrade pip setuptools wheel twine
-          python -m pip install Pyinstaller
-          python setup.py install
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
     - name: Build Windows executables
       run: |          
           pyinstaller -F -i NONE evbunpack/__main__.py --name evbunpack   
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: evbunpack.exe
-        path: dist/evbunpack.exe
-
-  release:
-    if: "contains(github.event.head_commit.message, 'Version')"
-    needs: ["build_windows"]
-    runs-on: ubuntu-latest
-
-    steps:
     - name : Get Version
       id   : get_version
       run  : |        
-        version=$(echo "${{ github.event.head_commit.message }}" | awk 'NR==1' | awk '{print $2}')
-        echo "::set-output name=version::$version"
-
-    - uses: actions/checkout@v3    
+        $message = "${{ github.event.head_commit.message }}"
+        $lines = $message.Split([Environment]::NewLine)
+        $version = $lines[0].Split()[1]
+        
+        Write-Output "::set-output name=version::$version"          
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -79,20 +48,14 @@ jobs:
       with:
         tag_name: ${{ steps.get_version.outputs.version }}
         release_name: Version ${{ steps.get_version.outputs.version }}
-
-    - uses: actions/download-artifact@v3
-      with:
-        name: evbunpack.exe
-
     - uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./evbunpack.exe
+        asset_path: dist/evbunpack.exe
         asset_name: evbunpack.exe
         asset_content_type: application/application/vnd.microsoft.portable-executable
-
     - uses: eregon/publish-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

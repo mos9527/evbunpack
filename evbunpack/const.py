@@ -96,7 +96,8 @@ class EVB_ENIGMA1_HEADER:
         if arch_64:
             return EVB_ENIGMA1_HEADER.x64_OLD if legacy_pe else EVB_ENIGMA1_HEADER.x64_NEW
         else:
-            return EVB_ENIGMA1_HEADER.x64_OLD if legacy_pe else EVB_ENIGMA1_HEADER.x86_NEW
+            return EVB_ENIGMA1_HEADER.x86_OLD if legacy_pe else EVB_ENIGMA1_HEADER.x86_NEW
+
 EVB_PACK_HEADER = [
     ('4s', 'signature'),   # Would always be ('EVB\x00') if valid
     ('60s',''),    
