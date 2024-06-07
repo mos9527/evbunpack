@@ -9,7 +9,7 @@ on:
      
 jobs:
   build-and-release:
-    if: "contains(github.event.head_commit.message, 'Version')"
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -36,7 +36,7 @@ jobs:
     - name : Get Version
       id   : get_version
       run  : |        
-        $message = "${{ github.event.head_commit.message }}"
+        $message = @(git log -1 --oneline --format=%s)
         $lines = $message.Split([Environment]::NewLine)
         $version = $lines[0].Split()[1]
         
