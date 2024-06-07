@@ -2,8 +2,9 @@ name: Publish
 
 on:
   workflow_run:
-    workflows: Test
+    workflows: Tests
     types: completed
+  workflow_dispatch:
      
 jobs:
   pypi:
