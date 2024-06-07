@@ -28,7 +28,7 @@ jobs:
     - name: Publish package
       env:
         TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
         twine upload ./dist/*.whl --skip-existing
         twine upload ./dist/*.tar.gz --skip-existing
