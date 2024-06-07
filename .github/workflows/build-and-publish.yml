@@ -39,8 +39,8 @@ jobs:
       id   : get_version
       run  : |        
         $message = @(git log -1 --oneline --format=%s)
-        $lines = $message.Split([Environment]::NewLine)
-        $version = $lines[0].Split()[1]
+        $lines = $message.Split(' ')
+        $version = $lines[1]
         
         Write-Output "::set-output name=version::$version"          
     - name: Create Release
