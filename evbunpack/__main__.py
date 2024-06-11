@@ -203,8 +203,8 @@ def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
     find_data_directory('IMPORT').Size = hdr['IMPORT_SIZE']
     find_data_directory('RELOC').VirtualAddress = hdr['RELOC_ADDRESS']
     find_data_directory('RELOC').Size = hdr['RELOC_SIZE']
-    logger.info('Import -> VA=0x%x Size=0x%x' % (hdr['IMPORT_ADDRESS'],hdr['IMPORT_SIZE']))
-    logger.info('Reloc  -> VA=0x%x Size=0x%x' % (hdr['RELOC_ADDRESS'],hdr['RELOC_SIZE']))
+    logger.debug('Import -> VA=0x%x Size=0x%x' % (hdr['IMPORT_ADDRESS'],hdr['IMPORT_SIZE']))
+    logger.debug('Reloc  -> VA=0x%x Size=0x%x' % (hdr['RELOC_ADDRESS'],hdr['RELOC_SIZE']))
     if hdr['RELOC_SIZE'] == 0 or hdr['IMPORT_SIZE'] == 0:
         warnings_issued += 1
         logger.warning('Import/Reloc table size is zero. This may indicate that the header is incorrectly parsed.')
@@ -269,7 +269,7 @@ def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
     new_file_data = pe.write()
     with open(output_file,'wb+') as f:
         write_bytes(BytesIO(new_file_data),f,len(new_file_data),desc='Saving PE')
-    logger.info('Original PE saved: %s' % output_file)
+    logger.info('Unpacked PE saved: %s' % output_file)
     if warnings_issued:
         logger.warning('There were %d warning(s) issued during the restoration process.' % warnings_issued)
         logger.warning('Please try toggling the --legacy-pe flag if the unpacked EXE is corrupt.')        
@@ -332,9 +332,9 @@ def unpack_files(file : str, out_dir : str, legacy_fs : bool, fs_listing_only : 
             return
         logger.info('Extraction complete')
     
-def main(file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = False, ignore_pe: bool  = False, legacy_fs: bool = False, legacy_pe: bool = False, fs_listing_only: bool = False):
+def main(in_file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = False, ignore_pe: bool  = False, legacy_fs: bool = False, legacy_pe: bool = False, fs_listing_only: bool = False):
     logger.info('Enigma Virtual Box Unpacker v%s' % __version__)
-    logger.debug('File: %s' % file)
+    logger.debug('File: %s' % in_file)
     os.makedirs(out_dir,exist_ok=True)    
     if legacy_fs:
         logger.warning('Legacy mode for filesystem extraction enabled')
@@ -347,7 +347,7 @@ def main(file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = F
     else:
         logger.info('Extracting virtual filesystem')
         try:
-            unpack_files(file,out_dir,legacy_fs,fs_listing_only)
+            unpack_files(in_file,out_dir,legacy_fs,fs_listing_only)
         except Exception as e:
             logger.error('Unhandled exception occured while extracting virtual filesystem: %s' % e)
             raise e
@@ -356,10 +356,10 @@ def main(file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = F
     else:
         logger.info('Restoring executable')
         if not out_pe:
-            out_pe = os.path.join(out_dir, os.path.basename(file))
-            logger.warning('Using default executable save path: %s' % out_pe)
+            out_pe = os.path.join(out_dir, os.path.basename(in_file))
+            logger.info('Using default executable save path: %s' % out_pe)
         try:
-            restore_pe(file,out_pe,legacy_pe)
+            restore_pe(in_file,out_pe,legacy_pe)
         except Exception as e:
             logger.error('Unhandled exception occured while restoring executable: %s' % e)            
 
@@ -372,14 +372,14 @@ def __main__():
     group.add_argument('--ignore-pe',help='Don\'t restore the executable',action='store_true')
     group.add_argument('--legacy-fs',help='Use legacy mode for filesystem extraction',action='store_true')
     group.add_argument('--legacy-pe',help='Use legacy mode for PE restoration',action='store_true')    
-    group = parser.add_argument_group('Output')
-    group.add_argument('--out-dir', help='Output folder',default='.')
+    group = parser.add_argument_group('Overrides')
     group.add_argument('--out-pe', help='(If the executable is to be recovered) Where the unpacked EXE is saved. Leave as-is to save it in the output folder.',default='')
     group = parser.add_argument_group('Input')
     group.add_argument('file', help='File to be unpacked')
+    group.add_argument('output', help='Output folder')
     args = parser.parse_args()    
-    logging.basicConfig(level=args.log_level)
-    sys.exit(main(args.file,args.out_dir,args.out_pe,args.ignore_fs,args.ignore_pe,args.legacy_fs,args.legacy_pe,args.list))
+    logging.basicConfig(level=args.log_level, format='%(levelname)s: %(message)s')
+    sys.exit(main(args.file,args.output,args.out_pe,args.ignore_fs,args.ignore_pe,args.legacy_fs,args.legacy_pe,args.list))
 
 if __name__ == "__main__":
     __main__()
