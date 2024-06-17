@@ -183,7 +183,7 @@ def process_file_node(fd,path,node):
                 desc='Writing File [size=0x%x, offset=0x%x]' % (ssize,offset)
             )
 
-def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
+def restore_pe(input_file : str, output_file : str, pe_variant : str):
     warnings_issued = 0
     from pefile import PE,OPTIONAL_HEADER_MAGIC_PE_PLUS
     logger.debug('Loading PE...')
@@ -196,8 +196,9 @@ def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
     find_data_directory = lambda name:next(filter(lambda x:name in x.name,pe.OPTIONAL_HEADER.DATA_DIRECTORY))    
     search_pattern_in_sections = lambda pattern:next(dropwhile(lambda x: x[1] == -1, ((section, pe.__data__.find(pattern,section.PointerToRawData, section.PointerToRawData + section.SizeOfRawData)) for section in pe.sections)))
     # Data
+    logger.info('Unpacking with variant: %s' % pe_variant)
     enigma1 = pe.__data__[find_section(b'.enigma1').PointerToRawData:]
-    hdr = unpack(EVB_ENIGMA1_HEADER.get_struct(arch_64, legcay_pe), enigma1)
+    hdr = unpack(EVB_ENIGMA1_HEADER.get_struct(arch_64, pe_variant), enigma1)
     # Restore section with built-in offsets. All these ADDRESSes are VAs
     find_data_directory('IMPORT').VirtualAddress = hdr['IMPORT_ADDRESS']
     find_data_directory('IMPORT').Size = hdr['IMPORT_SIZE']
@@ -272,7 +273,7 @@ def restore_pe(input_file : str, output_file : str, legcay_pe : bool):
     logger.info('Unpacked PE saved: %s' % output_file)
     if warnings_issued:
         logger.warning('There were %d warning(s) issued during the restoration process.' % warnings_issued)
-        logger.warning('Please try toggling the --legacy-pe flag if the unpacked EXE is corrupt.')        
+        logger.warning('Please try using other pe_variant or check the original PE for any issues. Current variant: %s' % pe_variant)        
 
 def search_for_magic(fd,size,magic):
     CHUNKSIZE = 16 * 2**20  # 16MB
@@ -332,13 +333,13 @@ def unpack_files(file : str, out_dir : str, legacy_fs : bool, fs_listing_only : 
             return
         logger.info('Extraction complete')
     
-def main(in_file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = False, ignore_pe: bool  = False, legacy_fs: bool = False, legacy_pe: bool = False, fs_listing_only: bool = False):
+def main(in_file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool = False, ignore_pe: bool  = False, legacy_fs: bool = False, pe_variant: str = '10_70', fs_listing_only: bool = False):
     logger.info('Enigma Virtual Box Unpacker v%s' % __version__)
     logger.debug('File: %s' % in_file)
     os.makedirs(out_dir,exist_ok=True)    
     if legacy_fs:
         logger.warning('Legacy mode for filesystem extraction enabled')
-    if legacy_pe:
+    if pe_variant:
         logger.warning('Legacy mode for PE restoration enabled')
     if fs_listing_only:
         logger.warning('Listing virtual filesystem only')
@@ -359,7 +360,7 @@ def main(in_file : str, out_dir : str = '.', out_pe : str = '', ignore_fs: bool 
             out_pe = os.path.join(out_dir, os.path.basename(in_file))
             logger.info('Using default executable save path: %s' % out_pe)
         try:
-            restore_pe(in_file,out_pe,legacy_pe)
+            restore_pe(in_file,out_pe,pe_variant)
         except Exception as e:
             logger.error('Unhandled exception occured while restoring executable: %s' % e)            
 
@@ -371,7 +372,7 @@ def __main__():
     group.add_argument('--ignore-fs',help='Don\'t extract virtual filesystem',action='store_true')
     group.add_argument('--ignore-pe',help='Don\'t restore the executable',action='store_true')
     group.add_argument('--legacy-fs',help='Use legacy mode for filesystem extraction',action='store_true')
-    group.add_argument('--legacy-pe',help='Use legacy mode for PE restoration',action='store_true')    
+    group.add_argument('-pe','--pe-variant',help='Unpacker variant to use when unpacking EXEs. default=%(default)s', default='9_70', choices=EVB_ENIGMA1_HEADER.get_options())
     group = parser.add_argument_group('Overrides')
     group.add_argument('--out-pe', help='(If the executable is to be recovered) Where the unpacked EXE is saved. Leave as-is to save it in the output folder.',default='')
     group = parser.add_argument_group('Input')
@@ -379,7 +380,7 @@ def __main__():
     group.add_argument('output', help='Output folder')
     args = parser.parse_args()    
     logging.basicConfig(level=args.log_level, format='%(levelname)s: %(message)s')
-    sys.exit(main(args.file,args.output,args.out_pe,args.ignore_fs,args.ignore_pe,args.legacy_fs,args.legacy_pe,args.list))
+    sys.exit(main(args.file,args.output,args.out_pe,args.ignore_fs,args.ignore_pe,args.legacy_fs,args.pe_variant,args.list))
 
 if __name__ == "__main__":
     __main__()

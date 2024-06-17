@@ -12,13 +12,19 @@ def unpack_exec(pe_file, **kw):
     return return_code
 
 def test_unpack10_70_x64():
-    assert unpack_exec('x64_PackerTestApp_packed_20240522.exe', legacy_fs = False, legacy_pe = False) == 0
+    assert unpack_exec('x64_PackerTestApp_packed_20240522.exe', legacy_fs = False, pe_variant = '10_70') == 0
+
+def test_unpack9_70_x64():
+    assert unpack_exec('x64_PackerTestApp_packed_20210329.exe', legacy_fs = False, pe_variant = '9_70') == 0
 
 def test_unpack7_80_x64():
-    assert unpack_exec('x64_PackerTestApp_packed_20170713.exe', legacy_fs = True, legacy_pe = True) == 0
+    assert unpack_exec('x64_PackerTestApp_packed_20170713.exe', legacy_fs = True, pe_variant = '7_80') == 0
 
 def test_unpack10_70_x86():
-    assert unpack_exec('x86_PackerTestApp_packed_20240522.exe', legacy_fs = False, legacy_pe = False) == 0
+    assert unpack_exec('x86_PackerTestApp_packed_20240522.exe', legacy_fs = False, pe_variant = '10_70') == 0
+
+def test_unpack9_70_x86():
+    assert unpack_exec('x86_PackerTestApp_packed_20210329.exe', legacy_fs = False, pe_variant = '9_70') == 0
 
 def test_unpack7_80_x86():
-    assert unpack_exec('x86_PackerTestApp_packed_20170713.exe', legacy_fs = True, legacy_pe = True) == 0
+    assert unpack_exec('x86_PackerTestApp_packed_20170713.exe', legacy_fs = True, pe_variant = '7_80') == 0

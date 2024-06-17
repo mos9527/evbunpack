@@ -11,11 +11,13 @@
   - Supports compressed mode
 
 ## Tested Versions
+- This applies to PE unpacking. If the chosen PE unpack variant does not work, please try out the other ones with `-pe [variant]`
+
 | Packer Version | Notes | Unpack with Flags |
 | - | - | - |
-| 10.70 | Automatically tested in CI for x86/x64 binaries.  | None |
-| 9.60 | Limited testing. | `--legacy-pe` |
-| 7.80 | Automatically tested in CI for x86/x64 binaries | `--legacy-fs --legacy-pe` |
+| 10.70 | Automatically tested in CI for x86/x64 binaries.  | `-pe 10_70` |
+| 9.70 | Automatically tested in CI for x86/x64 binaries. |  `-pe 9_70` |
+| 7.80 | Automatically tested in CI for x86/x64 binaries | `-pe 7_80 --legacy-fs ` |
 
 ## Installation
   **For Windows Users** : Builds are available [here](https://github.com/mos9527/evbunpack/releases)
@@ -27,9 +29,7 @@
 
 ## Usage
 
-    usage: evbunpack [-h] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [-l] [--ignore-fs] [--ignore-pe]
-                      [--legacy-fs] [--legacy-pe] [--out-pe OUT_PE]
-                      file output
+    usage: evbunpack [-h] [--log-level {DEBUG,INFO,WARNING,ERROR,CRITICAL}] [-l] [--ignore-fs] [--ignore-pe] [--legacy-fs] [-pe {10_70,9_70,7_80}] [--out-pe OUT_PE] file output
 
     Enigma Virtual Box Unpacker
 
@@ -43,11 +43,11 @@
       --ignore-fs           Don't extract virtual filesystem
       --ignore-pe           Don't restore the executable
       --legacy-fs           Use legacy mode for filesystem extraction
-      --legacy-pe           Use legacy mode for PE restoration
+      -pe {10_70,9_70,7_80}, --pe-variant {10_70,9_70,7_80}
+                            Unpacker variant to use when unpacking EXEs. default=9_70
 
     Overrides:
-      --out-pe OUT_PE       (If the executable is to be recovered) Where the unpacked EXE is saved. Leave as-is  
-                            to save it in the output folder.
+      --out-pe OUT_PE       (If the executable is to be recovered) Where the unpacked EXE is saved. Leave as-is to save it in the output folder.
 
     Input:
       file                  File to be unpacked
