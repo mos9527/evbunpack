@@ -1,6 +1,6 @@
-import setuptools,evbunpack
+import setuptools, evbunpack
 
-with open("README.md", "r",encoding='utf-8') as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -18,9 +18,7 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    install_requires=[
-        "pefile"
-    ],
+    install_requires=["pefile"],
     entry_points={"console_scripts": ["evbunpack=evbunpack.__main__:__main__"]},
-    python_requires='>=3.0',
+    python_requires=">=3.0",
 )

@@ -1,5 +1,7 @@
 # evbunpack
-[Enigma Virtual Box](https://enigmaprotector.com/) unpacker
+[![Windows Build](https://github.com/mos9527/evbunpack/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/mos9527/evbunpack/blob/main/.github/workflows/build-and-publish.yml) [![Releases](https://img.shields.io/github/downloads/mos9527/evbunpack/total.svg)](https://GitHub.com/mos9527/evbunpack/releases/) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) 
+
+[Enigma Virtual Box](https://enigmaprotector.com/en/downloads/changelogenigmavb.html) unpacker
 
 ## Features
 - Executable unpacking

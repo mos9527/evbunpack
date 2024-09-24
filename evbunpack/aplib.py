@@ -1,4 +1,4 @@
-#-*- coding: utf-8 --
+# -*- coding: utf-8 --
 """A pure Python module for decompressing aPLib compressed data
 
 Adapted from the original C source code from http://ibsensoftware.com/files/aPLib-1.1.1.zip
@@ -9,14 +9,14 @@ import struct
 from binascii import crc32
 from io import BytesIO
 
-__all__ = ['APLib', 'decompress']
-__version__ = '0.6'
-__author__ = 'Sandor Nemes'
+__all__ = ["APLib", "decompress"]
+__version__ = "0.6"
+__author__ = "Sandor Nemes"
 
 
 class APLib(object):
 
-    __slots__ = 'source', 'destination', 'tag', 'bitcount', 'strict'
+    __slots__ = "source", "destination", "tag", "bitcount", "strict"
 
     def __init__(self, source, strict=True):
         self.source = BytesIO(source)
@@ -126,7 +126,7 @@ class APLib(object):
 
         except (TypeError, IndexError):
             if self.strict:
-                raise RuntimeError('aPLib decompression error')
+                raise RuntimeError("aPLib decompression error")
 
         return bytes(self.destination)
 
@@ -140,33 +140,35 @@ def decompress(data, strict=True):
     orig_size = None
     orig_crc = None
 
-    if data.startswith(b'AP32') and len(data) >= 24:
+    if data.startswith(b"AP32") and len(data) >= 24:
         # data has an aPLib header
-        header_size, packed_size, packed_crc, orig_size, orig_crc = struct.unpack_from('=IIIII', data, 4)
+        header_size, packed_size, packed_crc, orig_size, orig_crc = struct.unpack_from(
+            "=IIIII", data, 4
+        )
         data = data[header_size : header_size + packed_size]
 
     if strict:
         if packed_size is not None and packed_size != len(data):
-            raise RuntimeError('Packed data size is incorrect')
+            raise RuntimeError("Packed data size is incorrect")
         if packed_crc is not None and packed_crc != crc32(data):
-            raise RuntimeError('Packed data checksum is incorrect')
+            raise RuntimeError("Packed data checksum is incorrect")
 
     result = APLib(data, strict=strict).depack()
 
     if strict:
         if orig_size is not None and orig_size != len(result):
-            raise RuntimeError('Unpacked data size is incorrect')
+            raise RuntimeError("Unpacked data size is incorrect")
         if orig_crc is not None and orig_crc != crc32(result):
-            raise RuntimeError('Unpacked data checksum is incorrect')
+            raise RuntimeError("Unpacked data checksum is incorrect")
 
     return result
 
 
 def main():
     # self-test
-    data = b'T\x00he quick\xecb\x0erown\xcef\xaex\x80jumps\xed\xe4veur`t?lazy\xead\xfeg\xc0\x00'
-    assert decompress(data) == b'The quick brown fox jumps over the lazy dog'
+    data = b"T\x00he quick\xecb\x0erown\xcef\xaex\x80jumps\xed\xe4veur`t?lazy\xead\xfeg\xc0\x00"
+    assert decompress(data) == b"The quick brown fox jumps over the lazy dog"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
