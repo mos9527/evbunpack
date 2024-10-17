@@ -17,6 +17,7 @@
 
 | Packer Version | Notes | Unpack with Flags |
 | - | - | - |
+| 11.00 | Automatically tested in CI for x86/x64 binaries.  | `-pe 10_70` |
 | 10.70 | Automatically tested in CI for x86/x64 binaries.  | `-pe 10_70` |
 | 9.70 | Automatically tested in CI for x86/x64 binaries. |  `-pe 9_70` |
 | 7.80 | Automatically tested in CI for x86/x64 binaries | `-pe 7_80 --legacy-fs ` |

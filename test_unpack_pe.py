@@ -16,6 +16,15 @@ def unpack_exec(pe_file, **kw):
     return return_code
 
 
+def test_unpack11_00_x64():
+    assert (
+        unpack_exec(
+            "x64_PackerTestApp_packed_20240826.exe", legacy_fs=False, pe_variant="10_70"
+        )
+        == 0
+    )
+
+
 def test_unpack10_80_x64():
     assert (
         unpack_exec(
@@ -47,6 +56,15 @@ def test_unpack7_80_x64():
     assert (
         unpack_exec(
             "x64_PackerTestApp_packed_20170713.exe", legacy_fs=True, pe_variant="7_80"
+        )
+        == 0
+    )
+
+
+def test_unpack11_00_x86():
+    assert (
+        unpack_exec(
+            "x86_PackerTestApp_packed_20240826.exe", legacy_fs=False, pe_variant="10_70"
         )
         == 0
     )

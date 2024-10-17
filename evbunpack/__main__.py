@@ -240,7 +240,9 @@ def restore_pe(input_file: str, output_file: str, pe_variant: str):
         pe.__data__
     )  # This allows us to apply slicing on the PE data
     # Helpers
-    find_section = lambda name: next(filter(lambda x: name in x.Name, pe.sections))
+    find_section = lambda name: next(
+        filter(lambda x: name in x.Name, pe.sections), None
+    )
     find_data_directory = lambda name: next(
         filter(lambda x: name in x.name, pe.OPTIONAL_HEADER.DATA_DIRECTORY)
     )
@@ -262,7 +264,11 @@ def restore_pe(input_file: str, output_file: str, pe_variant: str):
     )
     # Data
     logger.info("Unpacking with variant: %s" % pe_variant)
-    enigma1 = pe.__data__[find_section(b".enigma1").PointerToRawData :]
+    enigma1 = find_section(b".enigma1")
+    assert (
+        enigma1
+    ), "Cannot find .enigma1 section. The file is likely not packed with Enigma Virtual Box, or has obfuscated section names."
+    enigma1 = pe.__data__[enigma1.PointerToRawData :]
     hdr = unpack(EVB_ENIGMA1_HEADER.get_struct(arch_64, pe_variant), enigma1)
     # Restore section with built-in offsets. All these ADDRESSes are VAs
     find_data_directory("IMPORT").VirtualAddress = hdr["IMPORT_ADDRESS"]
@@ -388,7 +394,9 @@ def unpack_files(file: str, out_dir: str, legacy_fs: bool, fs_listing_only: bool
     size = os.stat(file).st_size
     with open(file, "rb") as fd:
         magic = search_for_magic(fd, size, EVB_MAGIC)
-        assert magic >= 0, "EVB filesystem magic not found. Cannot proceed."
+        assert (
+            magic >= 0
+        ), "EVB filesystem magic not found. It's highly likely that this file is not produced by Enigma Virtual Box."
         fd.seek(magic)
         if legacy_fs:
             nodes = completed(legacy_pe_tree(fd))
@@ -437,15 +445,8 @@ def unpack_files(file: str, out_dir: str, legacy_fs: bool, fs_listing_only: bool
                 depths[0] = last
                 traverse_next_node(next(nodes))
         except StopIteration:
-            logger.error(
-                "The filetable appears to be corrupted. Cannot proceed any further."
-            )
-            logger.error(
-                "Please try toggling the --legacy-fs flag to solve this issue."
-            )
-            return
-        except AssertionError as e:
-            logger.error("While extracting package %s" % e)
+            logger.error("The filetable appears to be corrupted.")
+            logger.error("Toggling `--legacy-fs` may remedy the issue.")
             return
         logger.info("Extraction complete")
 
@@ -475,12 +476,10 @@ def main(
         logger.info("Extracting virtual filesystem")
         try:
             unpack_files(in_file, out_dir, legacy_fs, fs_listing_only)
+        except AssertionError as e:
+            logger.error("While extracting VFS: %s" % e)
         except Exception as e:
-            logger.error(
-                "Unhandled exception occured while extracting virtual filesystem: %s"
-                % e
-            )
-            raise e
+            logger.error("Unhandled exception occured while extracting VFS: %s" % e)
     if ignore_pe:
         logger.warning("Skipping executable restoration")
     else:
@@ -490,6 +489,8 @@ def main(
             logger.info("Using default executable save path: %s" % out_pe)
         try:
             restore_pe(in_file, out_pe, pe_variant)
+        except AssertionError as e:
+            logger.error("While restoring executable: %s" % e)
         except Exception as e:
             logger.error(
                 "Unhandled exception occured while restoring executable: %s" % e
